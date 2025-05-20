@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+.llm
+
+# Data files
+backend/gendoc/storage/*
+backend/rag/storage/*
+backend/rag/data/*
+

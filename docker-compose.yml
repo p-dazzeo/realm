@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  gendoc:
+    build:
+      context: .
+      dockerfile: backend/gendoc/Dockerfile
+    volumes:
+      - ./backend/gendoc/storage:/app/backend/gendoc/storage
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-your-openai-api-key}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your-anthropic-api-key}
+      - GENDOC_HOST=0.0.0.0
+      - GENDOC_PORT=8000
+      - STORAGE_DIR=/app/backend/gendoc/storage
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+      - DEFAULT_MODEL=gpt-4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  rag:
+    build:
+      context: .
+      dockerfile: backend/rag/Dockerfile
+    volumes:
+      - ./backend/rag/storage:/app/backend/rag/storage
+      - ./backend/rag/data:/app/backend/rag/data
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-your-openai-api-key}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your-anthropic-api-key}
+      - RAG_HOST=0.0.0.0
+      - RAG_PORT=8001
+      - CHROMA_DATA_DIR=/app/backend/rag/data
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+      - DEFAULT_MODEL=gpt-4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-your-openai-api-key}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your-anthropic-api-key}
+      - GENDOC_URL=http://gendoc:8000
+      - RAG_URL=http://rag:8001
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+      - DEFAULT_MODEL=gpt-4
+    depends_on:
+      - gendoc
+      - rag 
