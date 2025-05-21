@@ -20,12 +20,9 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gpt-4')
 MODEL_MAPPING = {
-    'gpt-3.5-turbo': 'openai/gpt-3.5-turbo',
-    'gpt-4': 'openai/gpt-4',
+    'o4-mini': 'openai/o4-mini',
     'gpt-4o': 'openai/gpt-4o',
-    'claude-3-opus': 'anthropic/claude-3-opus-20240229',
-    'claude-3-sonnet': 'anthropic/claude-3-sonnet-20240229',
-    'claude-3-haiku': 'anthropic/claude-3-haiku-20240307',
+    
 }
 
 # File storage

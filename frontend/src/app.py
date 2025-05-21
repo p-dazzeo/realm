@@ -129,8 +129,8 @@ def display_documentation_generator():
         
         model_name = st.selectbox(
             "Model",
-            ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
-            index=1,
+            ["gpt-4o", "o4-mini"],
+            index=0,
             help="Select the LLM model to use"
         )
     
@@ -185,8 +185,8 @@ def display_rag_interface():
         with col1:
             model_name = st.selectbox(
                 "Model",
-                ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
-                index=1,
+                ["gpt-4o", "o4-mini"],
+                index=0,
                 help="Select the LLM model to use",
                 key="rag_model"
             )
