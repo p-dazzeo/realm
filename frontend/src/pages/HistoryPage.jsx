@@ -27,10 +27,15 @@ const HistoryPage = () => {
   
   return (
     <div className="history-page">
-      <h1>Project History</h1>
-      <p className="subtitle">
-        View your documentation and question history for easy reference.
-      </p>
+      <div className="page-header">
+        <h1>Project History</h1>
+        <p className="subtitle">
+          View your documentation and question history for easy reference.
+        </p>
+        <div className="project-indicator">
+          Current project: <span className="project-name">{currentProjectId}</span>
+        </div>
+      </div>
       
       <HistoryView />
     </div>

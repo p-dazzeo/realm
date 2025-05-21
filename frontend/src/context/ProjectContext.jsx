@@ -20,9 +20,15 @@ export const ProjectProvider = ({ children }) => {
     return localStorage.getItem('currentProjectId') || null;
   });
   
+  const [projects, setProjects] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Load all projects on component mount
+  useEffect(() => {
+    loadProjects();
+  }, []);
 
   // When the current project changes, fetch its files and update localStorage
   useEffect(() => {
@@ -34,6 +40,22 @@ export const ProjectProvider = ({ children }) => {
       setProjectFiles([]);
     }
   }, [currentProjectId]);
+
+  // Load all available projects
+  const loadProjects = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const projectsList = await gendocService.listProjects();
+      setProjects(projectsList);
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      setError('Failed to load projects. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Load project files
   const loadProjectFiles = async (projectId) => {
@@ -69,12 +91,14 @@ export const ProjectProvider = ({ children }) => {
 
   // Value object to be provided by context
   const value = {
+    projects,
     currentProjectId,
     projectFiles,
     isLoading,
     error,
     setProject,
     clearProject,
+    refreshProjects: loadProjects,
     refreshProjectFiles: () => loadProjectFiles(currentProjectId),
   };
 

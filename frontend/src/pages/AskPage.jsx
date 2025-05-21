@@ -27,10 +27,15 @@ const AskPage = () => {
   
   return (
     <div className="ask-page">
-      <h1>Ask Questions</h1>
-      <p className="subtitle">
-        Ask questions about your codebase and get AI-powered answers with source code context.
-      </p>
+      <div className="page-header">
+        <h1>Ask Questions</h1>
+        <p className="subtitle">
+          Ask questions about your codebase and get AI-powered answers with source code context.
+        </p>
+        <div className="project-indicator">
+          Current project: <span className="project-name">{currentProjectId}</span>
+        </div>
+      </div>
       
       <QueryForm />
       

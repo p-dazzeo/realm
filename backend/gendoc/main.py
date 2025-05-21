@@ -47,6 +47,51 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/projects")
+async def list_projects():
+    """
+    List all available projects.
+    
+    Returns:
+        List of project objects with id and description
+    """
+    logger.info("Listing all projects")
+    
+    try:
+        projects = []
+        
+        # Get all directories in the storage directory
+        for item in config.STORAGE_DIR.iterdir():
+            if item.is_dir():
+                project_id = item.name
+                description = None
+                
+                # Try to read metadata if it exists
+                metadata_path = item / "metadata.txt"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, "r") as f:
+                            metadata_lines = f.readlines()
+                            for line in metadata_lines:
+                                if line.startswith("description:"):
+                                    description = line.split("description:", 1)[1].strip()
+                                    break
+                    except Exception as e:
+                        logger.warning(f"Could not read metadata for project {project_id}: {str(e)}")
+                
+                # Add project to the list
+                projects.append({
+                    "id": project_id,
+                    "description": description
+                })
+        
+        return {"projects": projects}
+        
+    except Exception as e:
+        logger.error(f"Error listing projects: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing projects: {str(e)}")
+
+
 @app.post("/generate", response_model=DocumentationResponse)
 async def generate(request: DocumentationRequest):
     """

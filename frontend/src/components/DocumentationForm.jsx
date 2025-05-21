@@ -2,18 +2,24 @@ import { useState } from 'react';
 import { gendocService } from '../services';
 import { useProject } from '../context/ProjectContext';
 import { addToDocumentationHistory } from '../utils/histories';
+import FileSelector from './FileSelector';
 
 /**
- * Form for generating project documentation
+ * Form for generating project documentation with improved UX
  */
 const DocumentationForm = () => {
-  const { currentProjectId, projectFiles } = useProject();
+  const { currentProjectId } = useProject();
   
+  // Form state
   const [docType, setDocType] = useState('overview');
   const [isFileSpecific, setIsFileSpecific] = useState(false);
   const [selectedFile, setSelectedFile] = useState('');
   const [modelName, setModelName] = useState('gpt-4o');
   const [customPrompt, setCustomPrompt] = useState('');
+  
+  // UI state
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -29,7 +35,6 @@ const DocumentationForm = () => {
     
     setLoading(true);
     setError(null);
-    setResult(null);
     
     try {
       const response = await gendocService.generateDocumentation({
@@ -41,6 +46,7 @@ const DocumentationForm = () => {
       });
       
       setResult(response);
+      setCurrentStep(3); // Move to result view
       
       // Add to history
       addToDocumentationHistory({
@@ -60,78 +66,94 @@ const DocumentationForm = () => {
     }
   };
 
-  return (
-    <div className="documentation-container">
-      <form className="documentation-form" onSubmit={handleSubmit}>
-        <h2>Documentation Generator</h2>
-        
-        {error && (
-          <div className="error-message">{error}</div>
-        )}
-        
-        <div className="form-row">
-          <div className="form-group">
-            <label htmlFor="doc-type">Documentation Type:</label>
-            <select
-              id="doc-type"
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              disabled={loading}
-            >
-              <option value="overview">Project Overview</option>
-              <option value="architecture">Architecture</option>
-              <option value="component">Component</option>
-              <option value="function">Function</option>
-              <option value="api">API</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="model-name">Model:</label>
-            <select
-              id="model-name"
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              disabled={loading}
-            >
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="o4-mini">O4-mini</option>
-            </select>
-          </div>
+  // Go to next step
+  const nextStep = () => {
+    if (currentStep === 1 && isFileSpecific && !selectedFile) {
+      setError('Please select a file or choose project-wide documentation.');
+      return;
+    }
+    if (currentStep === 1 && docType === 'custom' && !customPrompt.trim()) {
+      setError('Please enter a custom prompt.');
+      return;
+    }
+    
+    setError(null);
+    setCurrentStep(currentStep + 1);
+  };
+
+  // Go to previous step
+  const prevStep = () => {
+    setCurrentStep(currentStep - 1);
+  };
+
+  // Reset the form
+  const resetForm = () => {
+    setDocType('overview');
+    setIsFileSpecific(false);
+    setSelectedFile('');
+    setCustomPrompt('');
+    setCurrentStep(1);
+    setResult(null);
+  };
+
+  // Get doc type description
+  const getDocTypeDescription = () => {
+    switch(docType) {
+      case 'overview':
+        return 'High-level overview of the project, its purpose, architecture, and main components.';
+      case 'architecture':
+        return 'Detailed explanation of the project architecture, design patterns, and code organization.';
+      case 'component':
+        return 'Documentation for specific components, classes, or modules including their purpose and relationships.';
+      case 'function':
+        return 'Detailed documentation of functions/methods including parameters, return values, and examples.';
+      case 'api':
+        return 'Documentation for APIs including endpoints, request/response formats, and authentication requirements.';
+      case 'custom':
+        return 'Create custom documentation by specifying exactly what you want to document using a custom prompt.';
+      default:
+        return '';
+    }
+  };
+
+  // Render different steps
+  const renderStepContent = () => {
+    switch(currentStep) {
+      case 1:
+        return renderStep1();
+      case 2:
+        return renderStep2();
+      case 3:
+        return renderStep3();
+      default:
+        return null;
+    }
+  };
+
+  // Step 1: Select documentation type and scope
+  const renderStep1 = () => (
+    <div className="step-content">
+      <div className="doc-type-selector">
+        <div className="doc-type-header">
+          <h3>What would you like to document?</h3>
+          <p className="doc-type-description">{getDocTypeDescription()}</p>
         </div>
         
-        <div className="form-group">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={isFileSpecific}
-              onChange={() => setIsFileSpecific(!isFileSpecific)}
-              disabled={loading || projectFiles.length === 0}
-            />
-            File-specific documentation
-          </label>
-        </div>
-        
-        {isFileSpecific && (
-          <div className="form-group">
-            <label htmlFor="selected-file">Select File:</label>
-            <select
-              id="selected-file"
-              value={selectedFile}
-              onChange={(e) => setSelectedFile(e.target.value)}
-              disabled={loading}
-              required={isFileSpecific}
-            >
-              <option value="">-- Select a file --</option>
-              {projectFiles.map((file, index) => (
-                <option key={index} value={file}>
-                  {file}
-                </option>
-              ))}
-            </select>
+        <div className="doc-type-options">
+          <div className="doc-type-grid">
+            {['overview', 'architecture', 'component', 'function', 'api', 'custom'].map(type => (
+              <div 
+                key={type}
+                className={`doc-type-card ${docType === type ? 'selected' : ''}`}
+                onClick={() => setDocType(type)}
+              >
+                <div className="doc-type-name">
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
         
         {docType === 'custom' && (
           <div className="form-group">
@@ -148,32 +170,194 @@ const DocumentationForm = () => {
           </div>
         )}
         
+        <div className="form-group">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={isFileSpecific}
+              onChange={() => {
+                setIsFileSpecific(!isFileSpecific);
+                if (isFileSpecific) setSelectedFile('');
+              }}
+              disabled={loading}
+            />
+            Document a specific file instead of the entire project
+          </label>
+        </div>
+        
+        {isFileSpecific && (
+          <div className="form-group">
+            <label htmlFor="file-selector">Select file to document:</label>
+            <FileSelector
+              selectedFiles={selectedFile}
+              onChange={setSelectedFile}
+              multiSelect={false}
+            />
+            {selectedFile && (
+              <div className="selected-file-info">
+                Selected: <span className="selected-file-path">{selectedFile}</span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        <div className="advanced-toggle" onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}>
+          <span className="toggle-icon">{isAdvancedOpen ? '▼' : '►'}</span>
+          Advanced options
+        </div>
+        
+        {isAdvancedOpen && (
+          <div className="advanced-options">
+            <div className="form-group">
+              <label htmlFor="model-name">Model:</label>
+              <select
+                id="model-name"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                disabled={loading}
+              >
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="o4-mini">O4-mini</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      <div className="step-buttons">
         <button
-          type="submit"
-          className="submit-button"
+          type="button" 
+          className="next-button"
+          onClick={nextStep}
           disabled={loading || 
-            (isFileSpecific && !selectedFile) || 
-            (docType === 'custom' && !customPrompt.trim())}
+            (docType === 'custom' && !customPrompt.trim()) ||
+            (isFileSpecific && !selectedFile)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
+  // Step 2: Review and submit
+  const renderStep2 = () => (
+    <div className="step-content">
+      <h3>Review Documentation Request</h3>
+      
+      <div className="review-summary">
+        <div className="review-item">
+          <div className="review-label">Documentation Type:</div>
+          <div className="review-value">
+            {docType.charAt(0).toUpperCase() + docType.slice(1)}
+          </div>
+        </div>
+        
+        <div className="review-item">
+          <div className="review-label">Scope:</div>
+          <div className="review-value">
+            {isFileSpecific ? `File: ${selectedFile}` : 'Entire Project'}
+          </div>
+        </div>
+        
+        {docType === 'custom' && (
+          <div className="review-item">
+            <div className="review-label">Custom Prompt:</div>
+            <div className="review-value prompt-preview">
+              {customPrompt}
+            </div>
+          </div>
+        )}
+        
+        <div className="review-item">
+          <div className="review-label">Model:</div>
+          <div className="review-value">{modelName}</div>
+        </div>
+      </div>
+      
+      <div className="step-buttons">
+        <button
+          type="button"
+          className="back-button"
+          onClick={prevStep}
+          disabled={loading}
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          className="submit-button"
+          onClick={handleSubmit}
+          disabled={loading}
         >
           {loading ? 'Generating...' : 'Generate Documentation'}
         </button>
-      </form>
+      </div>
+    </div>
+  );
+
+  // Step 3: Results
+  const renderStep3 = () => (
+    <div className="step-content">
+      <div className="result-header">
+        <h3>
+          {docType.charAt(0).toUpperCase() + docType.slice(1)} Documentation
+          {isFileSpecific && selectedFile && `: ${selectedFile}`}
+        </h3>
+        <div className="result-actions">
+          <button 
+            type="button" 
+            className="new-doc-button"
+            onClick={resetForm}
+          >
+            Create New Documentation
+          </button>
+        </div>
+      </div>
       
-      {result && (
-        <div className="documentation-result">
-          <h3>
-            {docType.charAt(0).toUpperCase() + docType.slice(1)} Documentation
-            {isFileSpecific && selectedFile && `: ${selectedFile}`}
-          </h3>
-          <div className="markdown-content">
-            {result.documentation.split('\n').map((line, index) => (
-              <p key={index}>{line}</p>
-            ))}
+      <div className="documentation-result">
+        <div className="markdown-content">
+          {result.documentation.split('\n').map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
+        </div>
+        
+        {result.token_usage && (
+          <div className="token-usage">
+            <span>Tokens: {result.token_usage.total_tokens || 0}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="documentation-container">
+      <form className="documentation-form" onSubmit={(e) => e.preventDefault()}>
+        <div className="step-indicator">
+          <div className={`step ${currentStep >= 1 ? 'active' : ''}`}>
+            <span className="step-number">1</span>
+            <span className="step-name">Choose Type</span>
+          </div>
+          <div className="step-connector"></div>
+          <div className={`step ${currentStep >= 2 ? 'active' : ''}`}>
+            <span className="step-number">2</span>
+            <span className="step-name">Review</span>
+          </div>
+          <div className="step-connector"></div>
+          <div className={`step ${currentStep >= 3 ? 'active' : ''}`}>
+            <span className="step-number">3</span>
+            <span className="step-name">Result</span>
           </div>
         </div>
-      )}
+        
+        {error && (
+          <div className="error-message">{error}</div>
+        )}
+        
+        {renderStepContent()}
+      </form>
     </div>
   );
 };
 
-export default DocumentationForm; 
+export default DocumentationForm;

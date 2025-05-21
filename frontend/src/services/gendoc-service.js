@@ -66,6 +66,20 @@ class GenDocService extends ApiService {
   }
 
   /**
+   * List all available projects
+   * @returns {Promise<Array>} Promise resolving to array of project objects
+   */
+  async listProjects() {
+    try {
+      const response = await this.get('projects');
+      return response.projects || [];
+    } catch (error) {
+      console.error('Error listing projects:', error);
+      return [];
+    }
+  }
+
+  /**
    * List files in a project
    * @param {string} projectId - Unique identifier for the project
    * @returns {Promise<string[]>} Promise resolving to array of file paths

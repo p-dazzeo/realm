@@ -1,98 +1,100 @@
 import { useProject } from '../context/ProjectContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 /**
  * Home page component with project overview
  */
 const HomePage = () => {
-  const { currentProjectId } = useProject();
+  const { projects, currentProjectId, setProject, isLoading, error, refreshProjects } = useProject();
+  const navigate = useNavigate();
   
+  useEffect(() => {
+    refreshProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Navigate to a specific page with the project selected
+  const navigateToProjectPage = (projectId, path) => {
+    setProject(projectId);
+    navigate(path);
+  };
+
   return (
     <div className="home-page">
-      <section className="hero-section">
-        <h1>REALM - Reverse Engineering Assistant</h1>
-        <p className="subtitle">
-          Generate comprehensive documentation and ask questions about your codebase with AI assistance.
-        </p>
-        
-        {!currentProjectId ? (
-          <div className="cta-container">
-            <Link to="/upload" className="cta-button">
-              Upload Project
-            </Link>
+      <div className="dashboard-header">
+        <Link to="/upload" className="upload-project-button" title="Upload new project" aria-label="Upload new project">
+          <span className="upload-icon">+</span>
+          <span>Upload project</span>
+        </Link>
+      </div>
+
+      <section className="projects-section">
+        {isLoading ? (
+          <div className="loading">
+            <div className="spinner"></div>
+            <p>Loading your projects...</p>
+          </div>
+        ) : error ? (
+          <div className="error-message">{error}</div>
+        ) : projects.length === 0 ? (
+          <div className="no-projects">
+            <p>You don't have any projects yet. Click the Upload project button to get started!</p>
           </div>
         ) : (
-          <div className="project-actions">
-            <h2>Current Project: {currentProjectId}</h2>
-            <div className="action-buttons">
-              <Link to="/documentation" className="action-button">
-                Generate Documentation
-              </Link>
-              <Link to="/ask" className="action-button">
-                Ask Questions
-              </Link>
-              <Link to="/history" className="action-button">
-                View History
-              </Link>
-            </div>
+          <div className="project-cards">
+            {projects.map(project => (
+              <div 
+                key={project.id} 
+                className={`project-card ${currentProjectId === project.id ? 'active' : ''}`}
+                onClick={() => setProject(project.id)}
+              >
+                <div className="project-card-content">
+                  <div className="project-icon">
+                    {project.id.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="project-info">
+                    <h3 className="project-title">{project.id}</h3>
+                    {project.description && <p className="project-description">{project.description}</p>}
+                  </div>
+                </div>
+                
+                <div className="project-card-actions">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateToProjectPage(project.id, '/documentation');
+                    }} 
+                    className="card-action"
+                  >
+                    <span className="action-icon">📄</span>
+                    Documentation
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateToProjectPage(project.id, '/ask');
+                    }} 
+                    className="card-action"
+                  >
+                    <span className="action-icon">❓</span>
+                    Ask Questions
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateToProjectPage(project.id, '/history');
+                    }} 
+                    className="card-action"
+                  >
+                    <span className="action-icon">🕒</span>
+                    View History
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </section>
-      
-      <section className="features-section">
-        <h2>Features</h2>
-        
-        <div className="feature-grid">
-          <div className="feature-card">
-            <h3>Documentation Generation</h3>
-            <p>
-              Automatically generate comprehensive documentation for your entire project 
-              or specific files using advanced AI.
-            </p>
-          </div>
-          
-          <div className="feature-card">
-            <h3>Code Q&A</h3>
-            <p>
-              Ask questions about your codebase and get accurate answers with 
-              source code references.
-            </p>
-          </div>
-          
-          <div className="feature-card">
-            <h3>Multiple Documentation Types</h3>
-            <p>
-              Generate different types of documentation: project overview, architecture,
-              component details, function documentation, and API references.
-            </p>
-          </div>
-          
-          <div className="feature-card">
-            <h3>History Tracking</h3>
-            <p>
-              Keep track of all generated documentation and queries for future reference.
-            </p>
-          </div>
-        </div>
-      </section>
-      
-      <section className="how-it-works">
-        <h2>How It Works</h2>
-        
-        <ol className="steps-list">
-          <li>
-            <strong>Upload your project</strong> as a ZIP file with a unique project ID.
-          </li>
-          <li>
-            <strong>Generate documentation</strong> for your entire project or specific files.
-          </li>
-          <li>
-            <strong>Ask questions</strong> about your codebase and get AI-powered answers.
-          </li>
-          <li>
-            <strong>Review history</strong> of all documentation and queries for reference.
-          </li>
-        </ol>
       </section>
     </div>
   );
