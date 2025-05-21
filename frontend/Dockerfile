@@ -1,30 +1,27 @@
 FROM python:3.12-slim
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc build-essential && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Set PYTHONPATH to include the app directory
+ENV PYTHONPATH="/app"
 
-# Copy only necessary files for this service
-COPY pyproject.toml uv.lock ./
-COPY frontend ./frontend
-COPY shared ./shared
-
-# Install UV package manager
+# Install uv, the Python package installer
 RUN pip install uv
 
-# Install project dependencies
-RUN uv pip install --no-cache-dir -e .
+# Copy pyproject.toml and uv.lock to leverage Docker cache
+COPY pyproject.toml uv.lock* /app/
 
-# Expose Streamlit port
+# Install project dependencies
+RUN uv sync --locked --no-cache
+
+# Copy the frontend application code into the container
+COPY ./frontend /app/frontend
+COPY ./shared /app/shared
+
+# Expose the port the app runs on
 EXPOSE 8501
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-
-# Start the Streamlit app
-CMD ["streamlit", "run", "frontend/src/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"] 
+# Define the command to run the application
+# Assuming your Streamlit app's entry point is frontend/src/app.py
+CMD ["uv", "run", "streamlit", "run", "frontend/src/app.py", "--server.port=8501", "--server.address=0.0.0.0"] 

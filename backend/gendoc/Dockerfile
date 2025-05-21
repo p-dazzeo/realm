@@ -1,33 +1,24 @@
 FROM python:3.12-slim
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc build-essential && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy only necessary files for this service
-COPY pyproject.toml uv.lock ./
-COPY backend/gendoc ./backend/gendoc
-COPY shared ./shared
-
-# Install UV package manager
+# Install uv, the Python package installer
 RUN pip install uv
 
+# Copy pyproject.toml and uv.lock to leverage Docker cache
+COPY pyproject.toml uv.lock* /app/
+
 # Install project dependencies
-RUN uv pip install --no-cache-dir -e .
+RUN uv sync --locked --no-cache
 
-# Create storage directory
-RUN mkdir -p /app/backend/gendoc/storage
+# Copy the gendoc application code into the container
+COPY ./backend/gendoc /app/backend/gendoc
+COPY ./shared /app/shared
 
-# Expose port
+# Expose the port the app runs on
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-
-# Start the service
-CMD ["uvicorn", "backend.gendoc.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 
+# Define the command to run the application
+# Assuming your FastAPI app's entry point is backend/gendoc/main.py and the app instance is named "app"
+CMD ["uv", "run", "uvicorn", "backend.gendoc.main:app", "--host", "0.0.0.0", "--port", "8000"] 
