@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.gendoc import config
 from backend.gendoc.llm import generate_documentation
 from shared.models import DocumentationRequest, DocumentationResponse
-from shared.utils import extract_zip, get_file_contents
+from shared.utils import extract_zip, get_file_contents, list_files
 
 # Configure logging
 logging.basicConfig(level=config.LOG_LEVEL)
@@ -151,6 +151,41 @@ async def upload_project(
     except Exception as e:
         logger.error(f"Error uploading project: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading project: {str(e)}")
+
+
+@app.get("/projects/{project_id}/files")
+async def list_project_files(project_id: str):
+    """
+    List all files in a project.
+    
+    Args:
+        project_id: Unique identifier for the project
+        
+    Returns:
+        List of file paths in the project
+    """
+    logger.info(f"Listing files for project: {project_id}")
+    
+    # Check if project directory exists
+    project_dir = config.STORAGE_DIR / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    
+    try:
+        # Get all files
+        files = list_files(project_dir)
+        
+        # Convert to relative paths
+        relative_files = [str(f.relative_to(project_dir)) for f in files]
+        
+        # Sort files alphabetically for better UX
+        relative_files.sort()
+        
+        return {"files": relative_files}
+        
+    except Exception as e:
+        logger.error(f"Error listing project files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing project files: {str(e)}")
 
 
 if __name__ == "__main__":
