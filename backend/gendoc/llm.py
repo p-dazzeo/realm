@@ -107,48 +107,77 @@ def generate_documentation(request: DocumentationRequest, code_content: str) -> 
     """
     logger.info(f"Generating documentation for project: {request.project_id}, file: {request.file_path}")
 
+    # If a workflow is provided directly, use it
     if request.workflow:
-        logger.info(f"Using workflow: {request.workflow.name} (Type: {request.workflow_type})")
+        logger.info(f"Using provided workflow: {request.workflow.name} (Type: {request.workflow_type or request.workflow.doc_type.value})")
         return execute_workflow(request, code_content)
-    else:
-        logger.info(f"Using standard documentation type: {request.doc_type}")
-        # Map the model name to LiteLLM format
-        model_name = config.MODEL_MAPPING.get(request.model_name, request.model_name)
+    
+    # Otherwise, try to find a default workflow for the requested doc_type
+    try:
+        # Look for a standard workflow for this doc_type
+        workflows_dir = config.STORAGE_DIR / "_workflows"
+        workflow_file = workflows_dir / f"{request.doc_type.value}-standard.json"
         
-        # Prepare the messages for LLM
-        messages = get_prompt_for_doc_type(
-            request.doc_type,
-            code_content,
-            request.additional_context,
-            request.custom_prompt
+        if workflow_file.exists():
+            # Load the workflow
+            with open(workflow_file, "r") as f:
+                import json
+                workflow_data = json.load(f)
+                from shared.models import DocumentationWorkflow
+                standard_workflow = DocumentationWorkflow(**workflow_data)
+                
+                # Update the request with the workflow and execute it
+                request.workflow = standard_workflow
+                request.workflow_type = request.doc_type.value
+                logger.info(f"Using standard workflow for {request.doc_type.value}")
+                return execute_workflow(request, code_content)
+        
+        # No workflow found, fall back to the classic approach
+        logger.info(f"No workflow found for {request.doc_type.value}, using classic approach")
+        
+    except Exception as e:
+        logger.warning(f"Error loading workflow for {request.doc_type.value}: {str(e)}")
+        logger.info("Falling back to classic documentation approach")
+    
+    # Fall back to the classic approach using a single prompt
+    logger.info(f"Using standard documentation type: {request.doc_type}")
+    # Map the model name to LiteLLM format
+    model_name = config.MODEL_MAPPING.get(request.model_name, request.model_name)
+    
+    # Prepare the messages for LLM
+    messages = get_prompt_for_doc_type(
+        request.doc_type,
+        code_content,
+        request.additional_context,
+        request.custom_prompt
+    )
+    
+    try:
+        # Call LiteLLM for completion
+        response = completion(
+            model=model_name,
+            messages=messages,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens or config.DEFAULT_MAX_TOKENS
         )
         
-        try:
-            # Call LiteLLM for completion
-            response = completion(
-                model=model_name,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens or config.DEFAULT_MAX_TOKENS
-            )
-            
-            # Extract the generated documentation
-            documentation = response.choices[0].message.content
-            
-            # Create the response
-            doc_response = DocumentationResponse(
-                project_id=request.project_id,
-                documentation=documentation,
-                doc_type=request.doc_type,
-                file_path=request.file_path,
-                token_usage=response.usage.model_dump() if hasattr(response.usage, 'model_dump') else response.usage # Ensure usage is dict
-            )
-            
-            return doc_response
-            
-        except Exception as e:
-            logger.error(f"Error generating standard documentation: {str(e)}")
-            raise
+        # Extract the generated documentation
+        documentation = response.choices[0].message.content
+        
+        # Create the response
+        doc_response = DocumentationResponse(
+            project_id=request.project_id,
+            documentation=documentation,
+            doc_type=request.doc_type,
+            file_path=request.file_path,
+            token_usage=response.usage.model_dump() if hasattr(response.usage, 'model_dump') else response.usage # Ensure usage is dict
+        )
+        
+        return doc_response
+        
+    except Exception as e:
+        logger.error(f"Error generating standard documentation: {str(e)}")
+        raise
 
 
 def execute_workflow(request: DocumentationRequest, code_content: str) -> DocumentationResponse:
@@ -287,9 +316,9 @@ def execute_workflow(request: DocumentationRequest, code_content: str) -> Docume
     doc_response = DocumentationResponse(
         project_id=request.project_id,
         documentation=final_documentation,
-        doc_type=DocumentationType.CUSTOM, # Or derive from workflow
+        doc_type=request.workflow.doc_type,  # Use the doc_type from the workflow
         file_path=request.file_path,
-        metadata={"workflow_name": request.workflow.name, "workflow_type": request.workflow_type or "custom"},
+        metadata={"workflow_name": request.workflow.name, "workflow_type": request.workflow_type or "standard"},
         token_usage=cumulative_token_usage
     )
     

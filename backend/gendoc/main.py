@@ -243,27 +243,6 @@ logger.info(f"Workflows directory ensured at: {workflows_dir}")
 
 workflow_router = APIRouter()
 
-@workflow_router.post("/", response_model=DocumentationWorkflow, status_code=201)
-async def create_workflow(workflow: DocumentationWorkflow):
-    """
-    Create a new documentation workflow.
-    Stores the workflow as a JSON file named after the workflow.
-    """
-    logger.info(f"Received request to create workflow: {workflow.name}")
-    workflow_file_path = workflows_dir / f"{workflow.name}.json"
-
-    if workflow_file_path.exists():
-        raise HTTPException(status_code=409, detail=f"Workflow '{workflow.name}' already exists.")
-
-    try:
-        with open(workflow_file_path, "w") as f:
-            f.write(workflow.model_dump_json(indent=2))
-        logger.info(f"Workflow '{workflow.name}' created successfully at {workflow_file_path}")
-        return workflow
-    except IOError as e:
-        logger.error(f"Error writing workflow file {workflow_file_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Could not save workflow: {str(e)}")
-
 @workflow_router.get("/", response_model=List[DocumentationWorkflow])
 async def list_workflows():
     """
@@ -308,49 +287,6 @@ async def get_workflow(workflow_name: str):
     except Exception as e:
         logger.error(f"Error loading workflow {workflow_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Could not load workflow: {str(e)}")
-
-
-@workflow_router.put("/{workflow_name}", response_model=DocumentationWorkflow)
-async def update_workflow(workflow_name: str, workflow: DocumentationWorkflow):
-    """
-    Update an existing documentation workflow.
-    The name in the path must match the name in the workflow body.
-    """
-    logger.info(f"Received request to update workflow: {workflow_name}")
-    if workflow_name != workflow.name:
-        raise HTTPException(status_code=400, detail="Workflow name in path does not match name in body.")
-
-    workflow_file_path = workflows_dir / f"{workflow_name}.json"
-    if not workflow_file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_name}' not found for update.")
-
-    try:
-        with open(workflow_file_path, "w") as f:
-            f.write(workflow.model_dump_json(indent=2))
-        logger.info(f"Workflow '{workflow_name}' updated successfully.")
-        return workflow
-    except IOError as e:
-        logger.error(f"Error writing workflow file {workflow_file_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Could not update workflow: {str(e)}")
-
-@workflow_router.delete("/{workflow_name}", status_code=200)
-async def delete_workflow(workflow_name: str):
-    """
-    Delete a documentation workflow by its name.
-    """
-    logger.info(f"Received request to delete workflow: {workflow_name}")
-    workflow_file_path = workflows_dir / f"{workflow_name}.json"
-
-    if not workflow_file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_name}' not found.")
-
-    try:
-        os.remove(workflow_file_path)
-        logger.info(f"Workflow '{workflow_name}' deleted successfully.")
-        return {"message": f"Workflow '{workflow_name}' deleted successfully."}
-    except OSError as e:
-        logger.error(f"Error deleting workflow file {workflow_file_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Could not delete workflow: {str(e)}")
 
 # Include the workflow router in the main FastAPI application
 app.include_router(workflow_router, prefix="/workflows", tags=["Workflows"])

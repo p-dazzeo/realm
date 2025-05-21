@@ -13,7 +13,6 @@ class DocumentationType(str, Enum):
     COMPONENT = "component"
     FUNCTION = "function"
     API = "api"
-    CUSTOM = "custom"
 
 
 class DocumentationRequest(BaseModel):
@@ -42,6 +41,7 @@ class DocumentationWorkflow(BaseModel):
     """Defines a custom workflow for documentation generation."""
     name: str = Field(..., description="Name of the documentation workflow")
     description: Optional[str] = Field(None, description="Description of the workflow")
+    doc_type: DocumentationType = Field(DocumentationType.OVERVIEW, description="The type of documentation this workflow generates")
     steps: List[WorkflowStep] = Field(..., description="List of steps in the workflow")
 
 

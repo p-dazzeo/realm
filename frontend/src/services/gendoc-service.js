@@ -34,7 +34,6 @@ class GenDocService extends ApiService {
    * @param {string} params.projectId - Unique identifier for the project
    * @param {string} params.docType - Type of documentation to generate
    * @param {string} params.filePath - Path to a specific file (optional)
-   * @param {string} params.customPrompt - Custom prompt for documentation generation (optional)
    * @param {string} params.modelName - LLM model to use (default: 'gpt-4o')
    * @param {number} params.temperature - Temperature for LLM generation (default: 0.2)
    * @returns {Promise} Promise resolving to generated documentation
@@ -43,7 +42,6 @@ class GenDocService extends ApiService {
     projectId,
     docType,
     filePath = null,
-    customPrompt = null,
     modelName = 'gpt-4o',
     temperature = 0.2
   }) {
@@ -56,10 +54,6 @@ class GenDocService extends ApiService {
 
     if (filePath) {
       data.file_path = filePath;
-    }
-
-    if (customPrompt) {
-      data.custom_prompt = customPrompt;
     }
 
     return this.post('generate', data);
@@ -100,6 +94,64 @@ class GenDocService extends ApiService {
    */
   async healthCheck() {
     return this.get('health');
+  }
+
+  /**
+   * List available documentation workflows
+   * @returns {Promise<Array>} Promise resolving to an array of workflow objects
+   */
+  async listWorkflows() {
+    try {
+      const response = await this.get('workflows');
+      return response || [];
+    } catch (error) {
+      console.error('Error listing workflows:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific workflow by name
+   * @param {string} workflowName - Name of the workflow to retrieve
+   * @returns {Promise} Promise resolving to a workflow object
+   */
+  async getWorkflow(workflowName) {
+    return this.get(`workflows/${workflowName}`);
+  }
+
+  /**
+   * Generate documentation using a specific workflow
+   * @param {Object} params - Documentation generation parameters
+   * @param {string} params.projectId - Unique identifier for the project
+   * @param {string} params.docType - Type of documentation to generate
+   * @param {string} params.filePath - Path to a specific file (optional)
+   * @param {string} params.modelName - LLM model to use
+   * @param {Object} params.workflow - The workflow to use
+   * @param {number} params.temperature - Temperature for LLM generation
+   * @returns {Promise} Promise resolving to generated documentation
+   */
+  async generateDocumentationWithWorkflow({
+    projectId,
+    docType,
+    filePath = null,
+    modelName = 'gpt-4o',
+    workflow,
+    temperature = 0.2
+  }) {
+    const data = {
+      project_id: projectId,
+      doc_type: docType,
+      model_name: modelName,
+      temperature,
+      workflow,
+      workflow_type: docType // Use the doc_type as the workflow_type
+    };
+
+    if (filePath) {
+      data.file_path = filePath;
+    }
+
+    return this.post('generate', data);
   }
 }
 

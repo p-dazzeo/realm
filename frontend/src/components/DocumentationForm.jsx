@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { gendocService } from '../services';
 import { useProject } from '../context/ProjectContext';
 import { addToDocumentationHistory } from '../utils/histories';
@@ -15,7 +15,11 @@ const DocumentationForm = () => {
   const [isFileSpecific, setIsFileSpecific] = useState(false);
   const [selectedFile, setSelectedFile] = useState('');
   const [modelName, setModelName] = useState('gpt-4o');
-  const [customPrompt, setCustomPrompt] = useState('');
+  
+  // Workflow state
+  const [workflows, setWorkflows] = useState([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
@@ -23,6 +27,38 @@ const DocumentationForm = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+
+  // Load available workflows
+  useEffect(() => {
+    const loadWorkflows = async () => {
+      setIsLoading(true);
+      try {
+        const workflowList = await gendocService.listWorkflows();
+        setWorkflows(workflowList);
+        
+        // Find default workflow based on current docType
+        const defaultWorkflow = workflowList.find(w => w.doc_type === docType);
+        if (defaultWorkflow) {
+          setSelectedWorkflow(defaultWorkflow);
+        }
+      } catch (err) {
+        console.error('Error loading workflows:', err);
+        setError('Unable to load documentation workflows.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadWorkflows();
+  }, []);
+  
+  // Update selected workflow when docType changes
+  useEffect(() => {
+    const matchingWorkflow = workflows.find(w => w.doc_type === docType);
+    if (matchingWorkflow) {
+      setSelectedWorkflow(matchingWorkflow);
+    }
+  }, [docType, workflows]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -37,13 +73,25 @@ const DocumentationForm = () => {
     setError(null);
     
     try {
-      const response = await gendocService.generateDocumentation({
-        projectId: currentProjectId,
-        docType,
-        filePath: isFileSpecific ? selectedFile : null,
-        customPrompt: docType === 'custom' ? customPrompt : null,
-        modelName
-      });
+      // Determine if we should use a workflow or standard documentation
+      let response;
+      
+      if (selectedWorkflow) {
+        response = await gendocService.generateDocumentationWithWorkflow({
+          projectId: currentProjectId,
+          docType,
+          filePath: isFileSpecific ? selectedFile : null,
+          modelName,
+          workflow: selectedWorkflow
+        });
+      } else {
+        response = await gendocService.generateDocumentation({
+          projectId: currentProjectId,
+          docType,
+          filePath: isFileSpecific ? selectedFile : null,
+          modelName
+        });
+      }
       
       setResult(response);
       setCurrentStep(3); // Move to result view
@@ -53,8 +101,8 @@ const DocumentationForm = () => {
         projectId: currentProjectId,
         docType,
         filePath: isFileSpecific ? selectedFile : null,
-        customPrompt: docType === 'custom' ? customPrompt : null,
         modelName,
+        workflowName: selectedWorkflow?.name,
         documentation: response.documentation
       });
       
@@ -72,10 +120,6 @@ const DocumentationForm = () => {
       setError('Please select a file or choose project-wide documentation.');
       return;
     }
-    if (currentStep === 1 && docType === 'custom' && !customPrompt.trim()) {
-      setError('Please enter a custom prompt.');
-      return;
-    }
     
     setError(null);
     setCurrentStep(currentStep + 1);
@@ -91,13 +135,18 @@ const DocumentationForm = () => {
     setDocType('overview');
     setIsFileSpecific(false);
     setSelectedFile('');
-    setCustomPrompt('');
     setCurrentStep(1);
     setResult(null);
   };
 
   // Get doc type description
   const getDocTypeDescription = () => {
+    // If there's a selected workflow with a description, use that
+    if (selectedWorkflow && selectedWorkflow.description) {
+      return selectedWorkflow.description;
+    }
+    
+    // Otherwise fall back to standard descriptions
     switch(docType) {
       case 'overview':
         return 'High-level overview of the project, its purpose, architecture, and main components.';
@@ -109,8 +158,6 @@ const DocumentationForm = () => {
         return 'Detailed documentation of functions/methods including parameters, return values, and examples.';
       case 'api':
         return 'Documentation for APIs including endpoints, request/response formats, and authentication requirements.';
-      case 'custom':
-        return 'Create custom documentation by specifying exactly what you want to document using a custom prompt.';
       default:
         return '';
     }
@@ -141,7 +188,7 @@ const DocumentationForm = () => {
         
         <div className="doc-type-options">
           <div className="doc-type-grid">
-            {['overview', 'architecture', 'component', 'function', 'api', 'custom'].map(type => (
+            {['overview', 'architecture', 'component', 'function', 'api'].map(type => (
               <div 
                 key={type}
                 className={`doc-type-card ${docType === type ? 'selected' : ''}`}
@@ -154,21 +201,6 @@ const DocumentationForm = () => {
             ))}
           </div>
         </div>
-        
-        {docType === 'custom' && (
-          <div className="form-group">
-            <label htmlFor="custom-prompt">Custom Prompt:</label>
-            <textarea
-              id="custom-prompt"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              placeholder="Enter your custom prompt here..."
-              disabled={loading}
-              required={docType === 'custom'}
-              rows={4}
-            />
-          </div>
-        )}
         
         <div className="form-group">
           <label className="checkbox-label">
@@ -230,7 +262,6 @@ const DocumentationForm = () => {
           className="next-button"
           onClick={nextStep}
           disabled={loading || 
-            (docType === 'custom' && !customPrompt.trim()) ||
             (isFileSpecific && !selectedFile)}
         >
           Next
@@ -258,15 +289,6 @@ const DocumentationForm = () => {
             {isFileSpecific ? `File: ${selectedFile}` : 'Entire Project'}
           </div>
         </div>
-        
-        {docType === 'custom' && (
-          <div className="review-item">
-            <div className="review-label">Custom Prompt:</div>
-            <div className="review-value prompt-preview">
-              {customPrompt}
-            </div>
-          </div>
-        )}
         
         <div className="review-item">
           <div className="review-label">Model:</div>
