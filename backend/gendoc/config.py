@@ -33,3 +33,5 @@ STORAGE_DIR.mkdir(exist_ok=True)
 DEFAULT_SYSTEM_PROMPT = """You are REALM, an expert software documentation generator. 
 Your task is to analyze code and produce high-quality, informative documentation.
 Focus on clarity, technical accuracy, and providing useful context.""" 
+
+DEFAULT_MAX_TOKENS = int(os.getenv('DEFAULT_MAX_TOKENS', '4000'))

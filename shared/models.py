@@ -26,6 +26,23 @@ class DocumentationRequest(BaseModel):
     temperature: float = Field(0.2, description="Temperature for LLM generation")
     max_tokens: Optional[int] = Field(None, description="Maximum tokens for response")
     additional_context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the LLM")
+    workflow_type: Optional[str] = Field(None, description="Type of workflow to use for documentation generation")
+    workflow: Optional['DocumentationWorkflow'] = Field(None, description="Custom workflow definition")
+
+
+class WorkflowStep(BaseModel):
+    """A single step in a documentation workflow."""
+    name: str = Field(..., description="Name of the workflow step")
+    prompt: str = Field(..., description="Prompt template for this step")
+    inputs: List[str] = Field(..., description="Inputs required for this step, can refer to previous step outputs or context")
+    output_type: str = Field("text", description="Expected output type for this step (e.g., 'text', 'json')")
+
+
+class DocumentationWorkflow(BaseModel):
+    """Defines a custom workflow for documentation generation."""
+    name: str = Field(..., description="Name of the documentation workflow")
+    description: Optional[str] = Field(None, description="Description of the workflow")
+    steps: List[WorkflowStep] = Field(..., description="List of steps in the workflow")
 
 
 class DocumentationResponse(BaseModel):

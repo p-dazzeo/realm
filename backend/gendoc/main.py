@@ -2,16 +2,17 @@
 Main FastAPI application for the GenDoc service.
 """
 import os
+import json # Added
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List # Added List
 
-from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Form, APIRouter # Added APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.gendoc import config
 from backend.gendoc.llm import generate_documentation
-from shared.models import DocumentationRequest, DocumentationResponse
+from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow # Added DocumentationWorkflow
 from shared.utils import extract_zip, get_file_contents, list_files
 
 # Configure logging
@@ -231,6 +232,128 @@ async def list_project_files(project_id: str):
     except Exception as e:
         logger.error(f"Error listing project files: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error listing project files: {str(e)}")
+
+
+# --- Workflow Management Router ---
+
+# Ensure the _workflows directory exists
+workflows_dir = config.STORAGE_DIR / "_workflows"
+workflows_dir.mkdir(parents=True, exist_ok=True)
+logger.info(f"Workflows directory ensured at: {workflows_dir}")
+
+workflow_router = APIRouter()
+
+@workflow_router.post("/", response_model=DocumentationWorkflow, status_code=201)
+async def create_workflow(workflow: DocumentationWorkflow):
+    """
+    Create a new documentation workflow.
+    Stores the workflow as a JSON file named after the workflow.
+    """
+    logger.info(f"Received request to create workflow: {workflow.name}")
+    workflow_file_path = workflows_dir / f"{workflow.name}.json"
+
+    if workflow_file_path.exists():
+        raise HTTPException(status_code=409, detail=f"Workflow '{workflow.name}' already exists.")
+
+    try:
+        with open(workflow_file_path, "w") as f:
+            f.write(workflow.model_dump_json(indent=2))
+        logger.info(f"Workflow '{workflow.name}' created successfully at {workflow_file_path}")
+        return workflow
+    except IOError as e:
+        logger.error(f"Error writing workflow file {workflow_file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Could not save workflow: {str(e)}")
+
+@workflow_router.get("/", response_model=List[DocumentationWorkflow])
+async def list_workflows():
+    """
+    List all available documentation workflows.
+    """
+    logger.info("Received request to list all workflows")
+    workflows = []
+    if not workflows_dir.exists():
+        logger.warning(f"Workflows directory {workflows_dir} not found.")
+        return workflows
+
+    for item in workflows_dir.iterdir():
+        if item.is_file() and item.suffix == ".json":
+            try:
+                with open(item, "r") as f:
+                    data = json.load(f)
+                    workflows.append(DocumentationWorkflow(**data))
+            except json.JSONDecodeError:
+                logger.warning(f"Could not parse workflow file: {item.name}")
+            except Exception as e: # Catch other pydantic validation errors etc.
+                logger.warning(f"Error loading workflow {item.name}: {str(e)}")
+    return workflows
+
+@workflow_router.get("/{workflow_name}", response_model=DocumentationWorkflow)
+async def get_workflow(workflow_name: str):
+    """
+    Retrieve a specific documentation workflow by its name.
+    """
+    logger.info(f"Received request to get workflow: {workflow_name}")
+    workflow_file_path = workflows_dir / f"{workflow_name}.json"
+
+    if not workflow_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_name}' not found.")
+    
+    try:
+        with open(workflow_file_path, "r") as f:
+            data = json.load(f)
+            return DocumentationWorkflow(**data)
+    except json.JSONDecodeError:
+        logger.error(f"Could not parse workflow file: {workflow_file_path}")
+        raise HTTPException(status_code=500, detail="Error parsing workflow file.")
+    except Exception as e:
+        logger.error(f"Error loading workflow {workflow_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Could not load workflow: {str(e)}")
+
+
+@workflow_router.put("/{workflow_name}", response_model=DocumentationWorkflow)
+async def update_workflow(workflow_name: str, workflow: DocumentationWorkflow):
+    """
+    Update an existing documentation workflow.
+    The name in the path must match the name in the workflow body.
+    """
+    logger.info(f"Received request to update workflow: {workflow_name}")
+    if workflow_name != workflow.name:
+        raise HTTPException(status_code=400, detail="Workflow name in path does not match name in body.")
+
+    workflow_file_path = workflows_dir / f"{workflow_name}.json"
+    if not workflow_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_name}' not found for update.")
+
+    try:
+        with open(workflow_file_path, "w") as f:
+            f.write(workflow.model_dump_json(indent=2))
+        logger.info(f"Workflow '{workflow_name}' updated successfully.")
+        return workflow
+    except IOError as e:
+        logger.error(f"Error writing workflow file {workflow_file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Could not update workflow: {str(e)}")
+
+@workflow_router.delete("/{workflow_name}", status_code=200)
+async def delete_workflow(workflow_name: str):
+    """
+    Delete a documentation workflow by its name.
+    """
+    logger.info(f"Received request to delete workflow: {workflow_name}")
+    workflow_file_path = workflows_dir / f"{workflow_name}.json"
+
+    if not workflow_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_name}' not found.")
+
+    try:
+        os.remove(workflow_file_path)
+        logger.info(f"Workflow '{workflow_name}' deleted successfully.")
+        return {"message": f"Workflow '{workflow_name}' deleted successfully."}
+    except OSError as e:
+        logger.error(f"Error deleting workflow file {workflow_file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Could not delete workflow: {str(e)}")
+
+# Include the workflow router in the main FastAPI application
+app.include_router(workflow_router, prefix="/workflows", tags=["Workflows"])
 
 
 if __name__ == "__main__":
