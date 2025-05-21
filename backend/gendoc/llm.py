@@ -11,9 +11,7 @@ from backend.gendoc import config
 from shared.models import (
     DocumentationType,
     DocumentationRequest,
-    DocumentationResponse,
-    DocumentationWorkflow, # Added
-    WorkflowStep # Added
+    DocumentationResponse
 )
 
 # Configure logging

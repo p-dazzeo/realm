@@ -30,9 +30,7 @@ def basic_workflow_step1_data():
 def basic_workflow_step2_data():
     return {
         "name": "step2_elaborate",
-        # Prompt keys now use underscores as per llm.py change
         "prompt": "Elaborate on this summary: {step1_summarize_output}. Use context: {additional_context_detail}",
-        # Inputs in the model still use dots, sanitization happens in execute_workflow
         "inputs": ["step1_summarize.output", "additional_context.detail"],
         "output_type": "text"
     }
@@ -54,7 +52,7 @@ def doc_request_with_workflow(sample_workflow, sample_code_content):
     return DocumentationRequest(
         project_id="test_project",
         file_path="test.py",
-        doc_type=DocumentationType.CUSTOM, # Does not matter when workflow is present
+        doc_type=DocumentationType.CUSTOM,
         model_name="test_model",
         workflow=sample_workflow,
         additional_context={"detail": "some_detail_value"}
