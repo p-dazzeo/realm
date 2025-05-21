@@ -17,7 +17,7 @@ services:
       - STORAGE_DIR=/app/backend/gendoc/storage
       - DEBUG=False
       - LOG_LEVEL=INFO
-      - DEFAULT_MODEL=gpt-4
+      - DEFAULT_MODEL=gpt-4o
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -42,7 +42,7 @@ services:
       - CHROMA_DATA_DIR=/app/backend/rag/data
       - DEBUG=False
       - LOG_LEVEL=INFO
-      - DEFAULT_MODEL=gpt-4
+      - DEFAULT_MODEL=gpt-4o
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -63,7 +63,7 @@ services:
       - RAG_URL=http://rag:8001
       - DEBUG=False
       - LOG_LEVEL=INFO
-      - DEFAULT_MODEL=gpt-4
+      - DEFAULT_MODEL=gpt-4o
     depends_on:
       - gendoc
       - rag 

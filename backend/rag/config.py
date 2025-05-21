@@ -18,7 +18,7 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # LLM configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gpt-4')
+DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gpt-4o')
 MODEL_MAPPING = {
     'o4-mini': 'openai/o4-mini',
     'gpt-4o': 'openai/gpt-4o',
