@@ -28,7 +28,7 @@ const AskPage = () => {
   return (
     <div className="ask-page">
       <div className="page-header">
-        <h1>Chat</h1>
+        <h1>Code Chat</h1>
         {/* <p className="subtitle">Chat with an AI about your codebase to get answers and insights.</p> */}
       </div>
       
