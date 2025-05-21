@@ -1058,3 +1058,242 @@ select {
   font-weight: 600;
   color: #0077cc;
 }
+
+/* Chat Interface Styles */
+/* AskPage.jsx - Overall Chat Container */
+.ask-page {
+  display: flex;
+  flex-direction: column;
+  /* Assuming header height is approx 60px + some padding */
+  height: calc(100vh - 80px); 
+  overflow: hidden; /* Prevent body scroll if content overflows */
+}
+
+/* QueryForm.jsx - Chat Container */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1; /* Allows chat-container to fill ask-page */
+  overflow: hidden; /* Contains chat-log scrolling */
+}
+
+/* QueryForm.jsx - Chat Log */
+.chat-log {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* Spacing between messages */
+  border: none; /* Override inline style */
+  margin-bottom: 0; /* Override inline style */
+}
+
+/* QueryForm.jsx - Messages */
+.message {
+  padding: 0.75rem 1rem; /* Increased padding slightly for better feel */
+  border-radius: 12px; /* Slightly more rounded */
+  max-width: 75%; /* Increased max-width slightly */
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+.message p {
+  margin-bottom: 0.25rem; /* Reduced margin for paragraphs within a message */
+}
+.message p:last-child {
+  margin-bottom: 0;
+}
+
+.user-message {
+  align-self: flex-end;
+  background-color: #0077cc; /* Using primary color for user */
+  color: white;
+  margin-left: auto; /* Ensure it aligns to right */
+}
+
+.ai-message {
+  align-self: flex-start;
+  background-color: #e9ecef; /* Light grey for AI */
+  color: #333;
+  margin-right: auto; /* Ensure it aligns to left */
+}
+
+.error-message.message { /* Specificity for error messages in chat */
+  align-self: stretch; /* Full width for error messages */
+  background-color: #f8d7da;
+  color: #842029;
+  border: 1px solid #f5c6cb;
+  max-width: 100%; /* Errors can be full width */
+}
+
+.error-message.message strong {
+  color: #842029;
+}
+
+/* Loading indicator within chat log */
+.chat-log .loading-indicator {
+  align-self: flex-start;
+  font-style: italic;
+  color: #6c757d;
+  padding: 0.5rem 1rem;
+}
+
+/* Styling for AI message sources */
+.ai-message .sources-section {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #ced4da; /* Lighter border within AI bubble */
+  font-size: 0.85em;
+}
+
+.ai-message .sources-section strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ai-message .source-item {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.6); /* Semi-transparent white */
+  border-radius: 6px;
+}
+.ai-message .source-item:last-child {
+  margin-bottom: 0;
+}
+
+.ai-message .source-header {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+  color: #0056b3; /* Darker blue for source links/headers */
+}
+
+.ai-message .source-content {
+  background-color: rgba(255, 255, 255, 0.8); /* Brighter white for code */
+  padding: 0.5rem;
+  border-radius: 4px;
+  max-height: 120px; /* Increased max-height */
+  overflow-y: auto;
+  font-size: 0.9em;
+  border: 1px solid #dee2e6;
+}
+
+.ai-message .message-metadata { /* For model name, file paths */
+  font-size: 0.8em;
+  color: #555;
+  margin-top: 0.5rem;
+}
+
+/* QueryForm.jsx - Chat Input Form */
+.chat-form {
+  display: flex;
+  padding: 1rem;
+  border-top: 1px solid #dee2e6; /* Standard border color */
+  background-color: #f8f9fa; /* Consistent with other form areas */
+  gap: 0.5rem; /* Gap between textarea and button */
+  align-items: flex-end; /* Align items to bottom for varied textarea height */
+}
+
+.chat-form textarea {
+  flex-grow: 1;
+  resize: none;
+  border-radius: 5px;
+  padding: 0.75rem; /* Increased padding */
+  border: 1px solid #ced4da;
+  font-size: 1rem;
+  min-height: 40px; /* Minimum height for single line */
+  max-height: 150px; /* Max height before scrolling */
+  overflow-y: auto; /* Allow scrolling for more text */
+}
+
+.chat-form button.submit-button { /* Targeting existing .submit-button class */
+  padding: 0.75rem 1.5rem; /* Adjusted padding */
+  margin-left: 0; /* Removed margin, using gap on form */
+  align-self: stretch; /* Make button height match textarea if it grows */
+  white-space: nowrap; /* Prevent text wrapping on button */
+}
+
+
+/* QueryForm.jsx - Chat Options */
+.chat-options {
+  padding: 0.75rem 1rem;
+  background-color: #f8f9fa; /* Consistent background */
+  border-bottom: 1px solid #e9ecef; /* Standard border */
+  font-size: 0.9em;
+}
+
+.chat-options .form-row {
+  margin-bottom: 0.5rem; /* Reduced margin for compactness */
+  align-items: center;
+}
+.chat-options .form-row:last-child {
+  margin-bottom: 0;
+}
+
+.chat-options .form-group {
+  margin-bottom: 0.5rem; /* Reduced margin */
+}
+.chat-options .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.chat-options label {
+  margin-bottom: 0.25rem; /* Reduced margin */
+  font-size: 0.95em;
+}
+
+.chat-options select,
+.chat-options .multi-select {
+  padding: 6px 10px; /* Compact padding */
+  font-size: 0.95em;
+}
+
+.chat-options .multi-select {
+  min-height: 60px; /* Compact height */
+}
+
+.chat-options .checkbox-label {
+  gap: 5px; /* Reduced gap */
+  font-size: 0.95em;
+}
+
+.chat-options small {
+  font-size: 0.85em;
+  color: #6c757d;
+}
+
+/* Project Indicator on AskPage - already has inline styles */
+/* If class-based approach preferred:
+.chat-project-indicator {
+  font-size: 0.8em;
+  text-align: center;
+  margin-bottom: 10px;
+  padding: 0.25rem;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+*/
+
+/* Responsive adjustments for chat */
+@media (max-width: 768px) {
+  .message {
+    max-width: 90%; /* Allow messages to take more width on small screens */
+  }
+
+  .chat-form {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .chat-form textarea {
+    padding: 0.5rem;
+  }
+
+  .chat-form button.submit-button {
+    padding: 0.5rem 1rem;
+  }
+  
+  .ask-page {
+    height: calc(100vh - 60px); /* Adjust if header becomes smaller */
+  }
+}

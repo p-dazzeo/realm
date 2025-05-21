@@ -28,49 +28,14 @@ const AskPage = () => {
   return (
     <div className="ask-page">
       <div className="page-header">
-        <h1>Ask Questions</h1>
-        <p className="subtitle">
-          Ask questions about your codebase and get AI-powered answers with source code context.
-        </p>
-        <div className="project-indicator">
-          Current project: <span className="project-name">{currentProjectId}</span>
-        </div>
+        <h1>Chat</h1>
+        {/* <p className="subtitle">Chat with an AI about your codebase to get answers and insights.</p> */}
       </div>
       
+      <div className="project-indicator" style={{ fontSize: '0.8em', textAlign: 'center', marginBottom: '10px' }}>
+        Current project: <span className="project-name">{currentProjectId}</span>
+      </div>
       <QueryForm />
-      
-      <div className="question-tips">
-        <h2>Tips for Effective Questions</h2>
-        <ul>
-          <li>
-            <strong>Be specific:</strong> Ask about specific parts of the code, 
-            like functions, components, or files.
-          </li>
-          <li>
-            <strong>Limit scope:</strong> Use the file filter to narrow the context
-            for more targeted and accurate answers.
-          </li>
-          <li>
-            <strong>Provide context:</strong> Mention relevant technologies or frameworks
-            in your question for better understanding.
-          </li>
-          <li>
-            <strong>Ask about:</strong> Code functionality, architecture, design patterns,
-            potential improvements, or bugs.
-          </li>
-        </ul>
-      </div>
-      
-      <div className="example-questions">
-        <h3>Example Questions</h3>
-        <ul>
-          <li>"How does the authentication flow work in this application?"</li>
-          <li>"What design patterns are used in the data access layer?"</li>
-          <li>"Explain how the caching mechanism is implemented."</li>
-          <li>"What are the main endpoints in the API and what do they do?"</li>
-          <li>"How does error handling work in the file upload process?"</li>
-        </ul>
-      </div>
     </div>
   );
 };
