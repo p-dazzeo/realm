@@ -139,13 +139,10 @@ const QueryForm = () => {
             const contentSnippet = source.content.length > 150 
               ? `${source.content.substring(0, 150)}...` 
               : source.content;
-            aiTextContent += `\n*   **${source.metadata.file_path}** (Score: ${source.score ? source.score.toFixed(2) : 'N/A'})\n    \`\`\`\n    ${contentSnippet}\n    \`\`\``;
+            aiTextContent += `\n*   **${source.metadata.file_path}** (Score: ${source.relevance_score ? source.relevance_score.toFixed(2) : 'N/A'})\n    \`\`\`\n    ${contentSnippet}\n    \`\`\``;
           });
         }
-        
-        // Model name is usually displayed by the library's title or can be part of text if needed
-        // For now, title handles "AI", model info can be part of text if desired.
-        // Let's append model name to text for clarity as per previous structure.
+
         if (item.modelName) {
             aiTextContent += `\n\n---\nModel: ${item.modelName}`;
         }

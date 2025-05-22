@@ -118,6 +118,9 @@ const HistoryView = () => {
                           <div key={i} className="source-item">
                             <div className="source-header">
                               Source {i + 1}: {source.metadata.file_path}
+                              {source.relevance_score && (
+                                <span className="source-score"> (Score: {source.relevance_score.toFixed(2)})</span>
+                              )}
                             </div>
                             <pre className="source-content">
                               <code>{source.content}</code>

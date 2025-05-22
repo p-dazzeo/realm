@@ -235,6 +235,12 @@ select {
   margin-bottom: 0.5rem;
 }
 
+.source-score {
+  font-weight: normal;
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
 .source-content {
   background-color: #f8f9fa;
   padding: 15px;
