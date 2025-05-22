@@ -19,6 +19,13 @@ from shared.utils import extract_zip, get_file_contents, list_files
 logging.basicConfig(level=config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
+# Set higher log levels for noisy libraries
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('openai').setLevel(logging.WARNING)
+logging.getLogger('litellm').setLevel(logging.WARNING)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="REALM GenDoc Service",

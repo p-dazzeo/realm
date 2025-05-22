@@ -1,0 +1,85 @@
+@import 'react-chat-elements/dist/main.css';
+
+/* Font overrides for react-chat-elements */
+.rce-container-list,
+.rce-container-input,
+.rce-mbox, /* Message box */
+.rce-mbox-title,
+/* .rce-mbox-text, */ /* Target text content more specifically below */
+.rce-button,
+.rce-input, /* Targeting the input textarea specifically */
+.rce-message-title, /* Titles within messages */
+.rce-system-text { /* System messages */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif !important; 
+}
+
+/* Styling for text content within message bubbles, including potential markdown elements */
+.rce-mbox .rce-mbox-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif !important; /* Ensure consistent font in text body */
+  white-space: pre-wrap; /* Important for preserving newlines and spacing from the text string */
+  word-wrap: break-word;
+}
+
+.rce-mbox-text strong, .rce-mbox-text b {
+  font-weight: 600 !important; /* Ensure it's bolder */
+}
+
+.rce-mbox-text em, .rce-mbox-text i {
+  font-style: italic !important;
+}
+
+.rce-mbox-text hr { /* For "---" if rendered as hr */
+  border: 0;
+  border-top: 1px solid #eee;
+  margin: 0.75em 0;
+}
+
+.rce-mbox-text ul {
+  padding-left: 20px;
+  margin-top: 0.5em;
+  list-style-type: disc; /* Default list style */
+}
+
+.rce-mbox-text ol {
+  padding-left: 20px;
+  margin-top: 0.5em;
+  list-style-type: decimal; /* Default list style */
+}
+
+.rce-mbox-text li {
+  margin-bottom: 0.25em;
+}
+
+.rce-mbox-text pre {
+  background-color: #f0f0f0; /* Light background for code blocks */
+  padding: 0.5em;
+  border-radius: 4px;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  white-space: pre-wrap; /* Wrap long lines within pre, but still allow scroll */
+  word-wrap: break-word; /* Break long words if necessary */
+}
+
+.rce-mbox-text code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  background-color: #f0f0f0; /* Light background for inline code */
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.rce-mbox-text pre code { /* Code inside pre should not have its own background or padding */
+  background-color: transparent;
+  padding: 0;
+  font-size: inherit; /* Inherit pre's font size */
+}
+
+/* Styling for the message date/timestamp if needed by the library's rendering */
+/* react-chat-elements typically styles its own dateString/time display */
+/* .rce-mbox-time { */
+   /* Example: font-size: 0.75em; color: #666; */
+/* } */

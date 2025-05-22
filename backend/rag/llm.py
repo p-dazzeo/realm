@@ -6,12 +6,9 @@ from typing import Dict, List, Any
 
 from litellm import completion
 import litellm
-
 from backend.rag import config
 from shared.models import RAGRequest, RAGResponse
 
-# Configure logging
-logging.basicConfig(level=config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # Initialize LiteLLM with API keys from environment
@@ -34,6 +31,11 @@ def generate_rag_response(request: RAGRequest, context_docs: List[Dict[str, Any]
     
     # Map the model name to LiteLLM format
     model_name = config.MODEL_MAPPING.get(request.model_name, request.model_name)
+    # Log context documents
+    logger.debug(f"******************** LLM DEBUG: Retrieved {len(context_docs)} context documents ********************")
+    for i, doc in enumerate(context_docs):
+        file_path = doc['metadata'].get('file_path', 'unknown')
+        logger.debug(f"Context doc {i+1}: file={file_path}, score={doc.get('relevance_score', 'N/A')}")
     
     # Prepare context from documents
     context = ""
@@ -60,12 +62,20 @@ def generate_rag_response(request: RAGRequest, context_docs: List[Dict[str, Any]
         
         # Extract the generated answer
         answer = response.choices[0].message.content
+        # Convert the usage object to a dictionary
+        usage_dict = None
+        if response.usage:
+            usage_dict = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
         
         # Create the response
         rag_response = RAGResponse(
             answer=answer,
             sources=context_docs,
-            token_usage=response.usage
+            token_usage=usage_dict
         )
         
         return rag_response

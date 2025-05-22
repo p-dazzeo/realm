@@ -16,7 +16,7 @@ services:
       - GENDOC_PORT=8000
       - STORAGE_DIR=/app/backend/gendoc/storage
       - DEBUG=False
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
       - DEFAULT_MODEL=gpt-4o
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -32,6 +32,8 @@ services:
     volumes:
       - ./backend/rag/storage:/app/backend/rag/storage
       - ./backend/rag/data:/app/backend/rag/data
+      - ./backend/rag:/app/backend/rag
+      - ./shared:/app/shared
     ports:
       - "8001:8001"
     restart: unless-stopped
@@ -41,7 +43,7 @@ services:
       - RAG_PORT=8001
       - CHROMA_DATA_DIR=/app/backend/rag/data
       - DEBUG=False
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
       - DEFAULT_MODEL=gpt-4o
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]

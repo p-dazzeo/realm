@@ -1,0 +1,22 @@
+.askPageContainer {
+  display: flex;
+  flex-direction: row;
+  height: calc(100vh - 60px); /* Adjust 60px based on your actual header/navbar height if any */
+  align-items: flex-start; /* Align items to the top */
+  gap: 15px; /* Optional: Add some space between chat and source viewer */
+  /* Or, if AskPage itself is meant to be full viewport height and contains its own header: */
+  /* height: 100vh; */ 
+  /* overflow: hidden; */ /* May be needed depending on parent and child heights */
+}
+
+.mainContent {
+  flex-grow: 1; /* Takes up remaining space */
+  min-width: 0; /* Added to allow shrinking below content size if needed */
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* If QueryForm content might overflow */
+  height: 100%; /* Ensure it fills the flex parent's height */
+}
+
+/* QueryForm itself might need internal scrolling for its MessageList */
+/* The SourceContentViewer is already styled in its own module for its width and internal scrolling */ 
