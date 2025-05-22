@@ -31,12 +31,12 @@ const QueryForm = () => {
     
     const currentQuery = query.trim();
     if (!currentQuery) {
-      setConversationHistory(prev => [...prev, { type: 'error', text: 'Please enter a question.' }]);
+      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ Please enter a question.' }]);
       return;
     }
     
     if (!currentProjectId) {
-      setConversationHistory(prev => [...prev, { type: 'error', text: 'No project selected. Please upload or select a project first.' }]);
+      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ No project selected. Please upload or select a project first.' }]);
       return;
     }
     
@@ -77,7 +77,7 @@ const QueryForm = () => {
       
     } catch (err) {
       console.error('RAG query error:', err);
-      const errorMessage = err.message || 'Failed to process your question. Please try again.';
+      const errorMessage = `⚠️ ${err.message || 'Failed to process your question. Please try again.'}`;
       setConversationHistory(prev => [...prev, { type: 'error', text: errorMessage }]);
     } finally {
       setLoading(false);
@@ -91,34 +91,60 @@ const QueryForm = () => {
     <> {/* Use Fragment to allow modal to be a sibling */}
       <div className="chat-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
         <div className="chat-log" ref={chatLogRef} style={{ flexGrow: 1, overflowY: 'auto', padding: '10px', border: '1px solid #ccc', marginBottom: '10px' }}>
-          {conversationHistory.map((item, index) => (
-            <div key={index} className={`message ${item.type}-message`} style={{ marginBottom: '10px', padding: '8px', borderRadius: '4px', backgroundColor: item.type === 'user' ? '#e1f5fe' : (item.type === 'ai' ? '#f1f8e9' : '#ffcdd2') }}>
-              {item.type === 'error' && <strong>Error: </strong>}
-              {item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0' }}>{line}</p>)}
-              
-              {item.type === 'ai' && item.sources && item.sources.length > 0 && (
-                <div className="sources-section" style={{ marginTop: '10px', fontSize: '0.9em' }}>
-                  <strong>Sources:</strong>
-                  {item.sources.map((source, idx) => (
-                    <div key={idx} className="source-item" style={{ marginTop: '5px', padding: '5px', backgroundColor: '#e8eaf6', borderRadius: '3px' }}>
-                      <div className="source-header" style={{ fontWeight: 'bold' }}>
-                        {source.metadata.file_path} (Score: {source.score ? source.score.toFixed(2) : 'N/A'})
+          {conversationHistory.map((item, index) => {
+            if (item.type === 'ai') {
+              return (
+                <div key={index} className="message-row ai-row">
+                  <div className="avatar ai-avatar">🤖</div>
+                  <div className="message ai-message" style={{ backgroundColor: '#f1f8e9' /* Keeping inline for now, CSS class will override */ }}>
+                    {item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0' }}>{line}</p>)}
+                    {item.sources && item.sources.length > 0 && (
+                      <div className="sources-section" style={{ marginTop: '10px', fontSize: '0.9em' }}>
+                        <strong>Sources:</strong>
+                        {item.sources.map((source, idx) => (
+                          <div key={idx} className="source-item" style={{ marginTop: '5px', padding: '5px', backgroundColor: '#e8eaf6', borderRadius: '3px' }}>
+                            <div className="source-header" style={{ fontWeight: 'bold' }}>
+                              {source.metadata.file_path} (Score: {source.score ? source.score.toFixed(2) : 'N/A'})
+                            </div>
+                            <pre className="source-content" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '100px', overflowY: 'auto', backgroundColor: '#fff', padding: '5px', borderRadius: '3px' }}>
+                              <code>{source.content}</code>
+                            </pre>
+                          </div>
+                        ))}
                       </div>
-                      <pre className="source-content" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '100px', overflowY: 'auto', backgroundColor: '#fff', padding: '5px', borderRadius: '3px' }}>
-                        <code>{source.content}</code>
-                      </pre>
+                    )}
+                    <div className="message-metadata" style={{ fontSize: '0.8em', color: '#555', marginTop: '5px' }}> {/* Added message-metadata class here */}
+                      Model: {item.modelName} {item.filePaths && item.filePaths.length > 0 ? `| Files: ${item.filePaths.join(', ')}` : ''}
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
-              {item.type === 'ai' && (
-                <div style={{ fontSize: '0.8em', color: '#555', marginTop: '5px' }}>
-                  Model: {item.modelName} {item.filePaths && item.filePaths.length > 0 ? `| Files: ${item.filePaths.join(', ')}` : ''}
+              );
+            } else if (item.type === 'user') {
+              return (
+                <div key={index} className="message-row user-row">
+                  <div className="message user-message" style={{ backgroundColor: '#e1f5fe' /* Keeping inline for now, CSS class will override */ }}>
+                    {item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0' }}>{line}</p>)}
+                  </div>
+                  <div className="avatar user-avatar">👤</div>
                 </div>
-              )}
+              );
+            } else if (item.type === 'error') {
+              return (
+                <div key={index} className="message error-message" style={{ backgroundColor: '#ffcdd2' /* Keeping inline for now, CSS class will override */ }}>
+                  <strong>Error: </strong>{item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0', display: 'inline' }}>{line}</p>)}
+                </div>
+              );
+            }
+            return null;
+          })}
+          {loading && (
+            <div className="message-row ai-row"> {/* Mimic AI row for loading indicator */}
+              <div className="avatar ai-avatar">🤖</div>
+              <div className="message ai-message loading-indicator" style={{ fontStyle: 'italic' }}> {/* Added loading-indicator class */}
+                Processing...
+              </div>
             </div>
-          ))}
-          {loading && <div className="message ai-message" style={{ fontStyle: 'italic' }}>Processing...</div>}
+          )}
         </div>
         
         <form className="chat-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -147,7 +173,7 @@ const QueryForm = () => {
                   disabled={loading || !currentProjectId} // Disable if no project
                   style={{padding: '5px 10px', fontSize: '0.9em'}}
                 >
-                  Filter by Files ({selectedFiles.length} selected)
+                  📎 Filter by Files ({selectedFiles.length} selected)
                 </button>
               </div>
             </div>

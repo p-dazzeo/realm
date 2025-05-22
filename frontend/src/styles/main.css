@@ -1085,9 +1085,56 @@ select {
   padding: 1.5rem; /* Increased padding */
   display: flex;
   flex-direction: column;
-  gap: 1rem; /* Increased spacing between messages */
+  /* gap: 1rem; */ /* Replaced by message-row margin */
   border: none; /* Override inline style */
   margin-bottom: 0; /* Override inline style */
+}
+
+/* New Message Row and Avatar Styles */
+.message-row {
+  display: flex;
+  margin-bottom: 1rem; /* Spacing between message rows */
+  align-items: flex-end; /* Align avatar and message bubble nicely */
+}
+.message-row:last-child {
+  margin-bottom: 0;
+}
+
+.ai-row {
+  justify-content: flex-start;
+}
+
+.user-row {
+  justify-content: flex-end;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #ccc; /* Default background */
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem; /* Adjusted for better emoji display */
+  flex-shrink: 0; /* Prevent avatar from shrinking */
+}
+
+.ai-avatar {
+  background-color: #6c757d; /* Darker grey for AI */
+}
+
+.user-avatar {
+  background-color: #007bff; /* Blue for User */
+}
+
+.ai-row .avatar {
+  margin-right: 10px;
+}
+
+.user-row .avatar {
+  margin-left: 10px;
 }
 
 /* QueryForm.jsx - Messages */
@@ -1098,6 +1145,7 @@ select {
   word-wrap: break-word;
   line-height: 1.4;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05); /* Added subtle shadow */
+  position: relative; /* For notch positioning */
 }
 
 .message p {
@@ -1108,18 +1156,60 @@ select {
 }
 
 .user-message {
-  align-self: flex-end;
+  /* align-self: flex-end; */ /* Handled by user-row */
   background-color: #007bff; /* Softened blue */
   color: white;
-  margin-left: auto; /* Ensure it aligns to right */
+  /* margin-left: auto; */ /* Handled by user-row */
+  border-top-right-radius: 5px; 
+  border-bottom-right-radius: 5px;
+}
+
+.user-message::after { /* Notch for user message */
+  content: '';
+  position: absolute;
+  top: 10px; 
+  right: -10px; 
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 10px solid #007bff;
 }
 
 .ai-message {
-  align-self: flex-start;
+  /* align-self: flex-start; */ /* Handled by ai-row */
   background-color: #f8f9fa; /* Off-white background */
   color: #212529; /* Darker text for contrast */
   border: 1px solid #dee2e6; /* Subtle border */
-  margin-right: auto; /* Ensure it aligns to left */
+  /* margin-right: auto; */ /* Handled by ai-row */
+  border-top-left-radius: 5px;
+  border-bottom-left-radius: 5px;
+}
+
+.ai-message::before { /* Notch border for AI message */
+  content: '';
+  position: absolute;
+  top: 9px; /* Adjusted to align with fill notch */
+  left: -11px; /* Outside the message border */
+  width: 0;
+  height: 0;
+  border-top: 11px solid transparent; /* Slightly larger to wrap the fill */
+  border-bottom: 11px solid transparent;
+  border-right: 11px solid #dee2e6; /* Match message border color */
+  z-index: 0; /* Behind the fill notch */
+}
+
+.ai-message::after { /* Notch fill for AI message */
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: -10px; /* Inside the message border */
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-right: 10px solid #f8f9fa; /* Match message background color */
+  z-index: 1; /* Above the border notch */
 }
 
 .error-message.message { /* Specificity for error messages in chat */
@@ -1128,6 +1218,12 @@ select {
   color: #842029;
   border: 1px solid #f5c6cb;
   max-width: 100%; /* Errors can be full width */
+  margin-left: 0; /* Ensure it's not offset by user/ai message margins if classes were mixed */
+  margin-right: 0; /* Ensure it's not offset */
+  border-radius: 4px; /* More standard error box, less like a chat bubble */
+  box-shadow: none; /* Remove chat bubble shadow */
+  padding: 0.75rem 1rem; /* Consistent but distinct padding */
+  text-align: center; /* Center the error text */
 }
 
 .error-message.message strong {
@@ -1136,7 +1232,7 @@ select {
 
 /* Loading indicator within chat log */
 .chat-log .loading-indicator {
-  align-self: flex-start;
+  /* align-self: flex-start; */ /* Now part of ai-row */
   font-style: italic;
   color: #6c757d;
   padding: 0.5rem 1rem;
@@ -1228,23 +1324,28 @@ select {
 
 .chat-options .form-row {
   margin-bottom: 0.75rem; /* Increased margin for compactness */
-  align-items: center;
+  align-items: center; /* Vertically align items in the row */
 }
 .chat-options .form-row:last-child {
   margin-bottom: 0;
 }
 
 .chat-options .form-group {
-  margin-bottom: 0.75rem; /* Increased margin */
+  margin-bottom: 0; /* Remove bottom margin from form-group inside form-row */
+  display: flex; /* Allow label and input to be part of the flex alignment */
+  flex-direction: column; /* Stack label and input */
+  justify-content: center; /* Center content if label is very short */
 }
-.chat-options .form-group:last-child {
-  margin-bottom: 0;
-}
-
-.chat-options label {
-  margin-bottom: 0.25rem; /* Reduced margin */
+/* Remove the paddingTop hack from the JSX for the button's form-group */
+.chat-options .form-group > label { /* Target labels directly inside form-group for model */
+  margin-bottom: 0.25rem; 
   font-size: 0.95em;
 }
+.chat-options .form-group > .action-button { /* Target button directly */
+   margin-top: auto; /* Helps align with select if label heights differ, or if no label */
+   margin-bottom: auto; /* Helps align with select */
+}
+
 
 .chat-options select,
 .chat-options .multi-select {
@@ -1256,8 +1357,8 @@ select {
   min-height: 60px; /* Compact height */
 }
 
-.chat-options .checkbox-label {
-  gap: 5px; /* Reduced gap */
+.chat-options .checkbox-label { /* This class is no longer used for file filter */
+  gap: 5px; 
   font-size: 0.95em;
 }
 
