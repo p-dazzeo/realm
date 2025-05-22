@@ -3,12 +3,13 @@ import { MessageList, Input as ChatInput, Button as ChatButton } from 'react-cha
 import { ragService } from '../services';
 import { useProject } from '../context/ProjectContext';
 import { addToRagHistory } from '../utils/histories';
-import FileSelector from './FileSelector'; 
+import FileSelector from './FileSelector';
+import SourceItemExpander from './SourceItemExpander';
 
 /**
  * Chat interface for querying the RAG service
  */
-const QueryForm = () => {
+const QueryForm = ({ onSourceFileClick }) => {
   const { currentProjectId } = useProject();
   
   const [query, setQuery] = useState('');
@@ -17,7 +18,7 @@ const QueryForm = () => {
   const [loading, setLoading] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
-  
+
   const messageListReferance = React.createRef();
 
   const handleSend = (e) => {
@@ -125,34 +126,33 @@ const QueryForm = () => {
           status: item.status,
         };
       } else if (item.type === 'ai') {
-        let aiTextContent = item.text;
+        const modelInfo = item.modelName ? (
+          <div key={`model-info-${idx}`} style={{ fontSize: '0.8em', color: '#777', marginTop: '5px' }}>
+            Model: {item.modelName}
+          </div>
+        ) : null;
 
-        if (item.filePaths && item.filePaths.length > 0) {
-          aiTextContent += `\n\n---\n**Context from:** ${item.filePaths.join(', ')}`;
-        }
-
-        if (item.sources && item.sources.length > 0) {
-          aiTextContent += `\n\n**Sources:**`;
-          item.sources.forEach((source, sIdx) => {
-            // Limiting content snippet length for readability
-            const contentSnippet = source.content.length > 150 
-              ? `${source.content.substring(0, 150)}...` 
-              : source.content;
-            aiTextContent += `\n*   **${source.metadata.file_path}** (Score: ${source.relevance_score ? source.relevance_score.toFixed(2) : 'N/A'})\n    \`\`\`\n    ${contentSnippet}\n    \`\`\``;
-          });
-        }
-
-        if (item.modelName) {
-            aiTextContent += `\n\n---\nModel: ${item.modelName}`;
-        }
+        const sourceExpander = item.sources && item.sources.length > 0 ? (
+          <SourceItemExpander 
+            key={`source-expander-${idx}`}
+            sources={item.sources} 
+            onSourceClick={onSourceFileClick}
+          />
+        ) : null;
         
         messageListItem = {
           ...messageListItem,
           position: 'left',
-          type: 'text',
+          type: 'text', 
           title: 'AI',
           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ai',
-          text: aiTextContent,
+          text: ( 
+            <div>
+              {item.text}
+              {sourceExpander}
+              {modelInfo}
+            </div>
+          )
         };
       } else if (item.type === 'error') {
         messageListItem = {
@@ -176,7 +176,6 @@ const QueryForm = () => {
     });
   }
 
-
   const filterFilesButton = (
     <ChatButton 
       className="rce-button-filefilter" // Add a custom class for specific styling if needed
@@ -189,7 +188,7 @@ const QueryForm = () => {
 
   return (
     <>
-      <div className="chat-container"> {/* Removed inline style, should be in CSS */}
+      <div className="chat-container">
         <MessageList
           referance={messageListReferance}
           className='message-list'
@@ -198,7 +197,6 @@ const QueryForm = () => {
           dataSource={transformedHistory}
         />
         
-        {/* Form element is no longer strictly needed if ChatInput handles submission */}
         <div className="chat-input-area"> {/* New wrapper for options and input */}
           <div className="chat-options"> {/* Retained chat-options styling */}
             <div className="form-row">
