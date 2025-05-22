@@ -102,7 +102,7 @@ const QueryForm = () => {
         let aiTextContent = item.text;
         if (item.sources && item.sources.length > 0) {
           const sourcesText = item.sources.map((source, idx) => 
-            `\n\nSource ${idx + 1}: ${source.metadata.file_path} (Score: ${source.score ? source.score.toFixed(2) : 'N/A'})\n\`\`\`\n${source.content}\n\`\`\``
+            `\n\nSource ${idx + 1}: ${source.metadata.file_path} (Score: ${source.relevance_score ? source.relevance_score.toFixed(2) : 'N/A'})\n\`\`\`\n${source.content}\n\`\`\``
           ).join('');
           aiTextContent += `\n\n--- Sources ---${sourcesText}`;
         }
