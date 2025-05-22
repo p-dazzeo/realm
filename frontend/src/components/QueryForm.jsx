@@ -105,15 +105,13 @@ const QueryForm = () => {
   };
   
   const transformConversationHistory = () => {
-    return conversationHistory.map((item, idx) => { // Added idx for unique key if needed by library
+    return conversationHistory.map((item, idx) => {
       const itemDate = item.timestamp || new Date();
       const formattedTime = itemDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       let messageListItem = {
-        // id: item.id || `msg-${idx}`, // Ensure unique ID if library requires it
         date: itemDate,
-        dateString: formattedTime, // For explicit time display
-        avatar: item.type === 'ai' ? '🤖' : (item.type === 'user' ? '👤' : undefined),
+        dateString: formattedTime,
       };
 
       if (item.type === 'user') {
@@ -121,12 +119,13 @@ const QueryForm = () => {
           ...messageListItem,
           position: 'right',
           type: 'text',
-          title: 'You', 
+          title: 'You',
+          avatar: 'https://api.dicebear.com/9.x/pixel-art/svg?seed=user-neutral',
           text: item.text,
           status: item.status,
         };
       } else if (item.type === 'ai') {
-        let aiTextContent = item.text; // Main AI answer
+        let aiTextContent = item.text;
 
         if (item.filePaths && item.filePaths.length > 0) {
           aiTextContent += `\n\n---\n**Context from:** ${item.filePaths.join(', ')}`;
@@ -150,14 +149,15 @@ const QueryForm = () => {
         messageListItem = {
           ...messageListItem,
           position: 'left',
-          type: 'text', // Consider 'markdown' if library supports it and styles are added
+          type: 'text',
           title: 'AI',
+          avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ai',
           text: aiTextContent,
         };
       } else if (item.type === 'error') {
         messageListItem = {
           ...messageListItem,
-          type: 'system', // System messages usually don't have avatars or titles by default
+          type: 'system',
           text: item.text,
         };
       }
