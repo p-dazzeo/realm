@@ -1,49 +1,47 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageList, Input as ChatInput, Button as ChatButton } from 'react-chat-elements';
 import { ragService } from '../services';
 import { useProject } from '../context/ProjectContext';
 import { addToRagHistory } from '../utils/histories';
-import FileSelector from './FileSelector'; // Import FileSelector
+import FileSelector from './FileSelector'; 
 
 /**
  * Chat interface for querying the RAG service
  */
 const QueryForm = () => {
-  const { currentProjectId } = useProject(); // projectFiles is not directly used here anymore
+  const { currentProjectId } = useProject();
   
   const [query, setQuery] = useState('');
-  // const [isFileSpecific, setIsFileSpecific] = useState(false); // Replaced by modal logic
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [modelName, setModelName] = useState('gpt-4o');
   const [loading, setLoading] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
-  const [isFileModalOpen, setIsFileModalOpen] = useState(false); // State for modal visibility
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
   
-  const chatLogRef = useRef(null);
+  const messageListReferance = React.createRef();
 
-  useEffect(() => {
-    if (chatLogRef.current) {
-      chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
-    }
-  }, [conversationHistory]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    const currentQuery = query.trim();
+  const handleSend = (e) => {
+    if (e && e.preventDefault) e.preventDefault(); // Prevent default form submission if event is passed
+    if (loading || !query.trim()) return; // Prevent sending if loading or query is empty
+    handleSubmit(); // Call the core submit logic
+  };
+  
+  const handleSubmit = async () => { // Removed 'e' parameter
+    const currentQuery = query.trim(); // query is already managed by state
     if (!currentQuery) {
-      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ Please enter a question.' }]);
+      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ Please enter a question.', timestamp: new Date() }]);
       return;
     }
     
     if (!currentProjectId) {
-      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ No project selected. Please upload or select a project first.' }]);
+      setConversationHistory(prev => [...prev, { type: 'error', text: '⚠️ No project selected. Please upload or select a project first.', timestamp: new Date() }]);
       return;
     }
     
     const currentFilePaths = selectedFiles.length > 0 ? selectedFiles : null;
 
-    setConversationHistory(prev => [...prev, { type: 'user', text: currentQuery }]);
-    setQuery('');
+    setConversationHistory(prev => [...prev, { type: 'user', text: currentQuery, timestamp: new Date() }]);
+    setQuery(''); // Clear input after adding to history
     setLoading(true);
     
     try {
@@ -62,7 +60,8 @@ const QueryForm = () => {
           sources: response.sources,
           modelName: modelName,
           filePaths: currentFilePaths,
-          query: currentQuery
+          query: currentQuery,
+          timestamp: new Date()
         }
       ]);
       
@@ -78,134 +77,135 @@ const QueryForm = () => {
     } catch (err) {
       console.error('RAG query error:', err);
       const errorMessage = `⚠️ ${err.message || 'Failed to process your question. Please try again.'}`;
-      setConversationHistory(prev => [...prev, { type: 'error', text: errorMessage }]);
+      setConversationHistory(prev => [...prev, { type: 'error', text: errorMessage, timestamp: new Date() }]);
     } finally {
       setLoading(false);
     }
   };
+  
+  const transformConversationHistory = () => {
+    return conversationHistory.map(item => {
+      let messageListItem = {
+        date: item.timestamp || new Date(),
+        avatar: item.type === 'ai' ? '🤖' : (item.type === 'user' ? '👤' : undefined), // Pass avatar string
+      };
 
-  // No longer using handleFileSelection directly here, FileSelector handles its own state via onChange
-  // const handleFileSelection = (e) => { ... };
+      if (item.type === 'user') {
+        messageListItem = {
+          ...messageListItem,
+          position: 'right',
+          type: 'text',
+          title: 'You', // Library uses title for name, avatar prop handles the visual
+          text: item.text,
+        };
+      } else if (item.type === 'ai') {
+        let aiTextContent = item.text;
+        if (item.sources && item.sources.length > 0) {
+          const sourcesText = item.sources.map((source, idx) => 
+            `\n\nSource ${idx + 1}: ${source.metadata.file_path} (Score: ${source.score ? source.score.toFixed(2) : 'N/A'})\n\`\`\`\n${source.content}\n\`\`\``
+          ).join('');
+          aiTextContent += `\n\n--- Sources ---${sourcesText}`;
+        }
+        if (item.modelName) {
+          aiTextContent += `\n\nModel: ${item.modelName}`;
+        }
+        if (item.filePaths && item.filePaths.length > 0) {
+          aiTextContent += ` | Files: ${item.filePaths.join(', ')}`;
+        }
+        
+        messageListItem = {
+          ...messageListItem,
+          position: 'left',
+          type: 'text',
+          title: 'AI',
+          text: aiTextContent,
+        };
+      } else if (item.type === 'error') {
+        messageListItem = {
+          ...messageListItem,
+          type: 'system',
+          text: item.text,
+        };
+      }
+      return messageListItem;
+    });
+  };
+  
+  let transformedHistory = transformConversationHistory();
+  if (loading) {
+    transformedHistory.push({
+      type: 'system',
+      text: '🤖 AI is thinking...',
+      date: new Date(),
+    });
+  }
+
 
   return (
-    <> {/* Use Fragment to allow modal to be a sibling */}
-      <div className="chat-container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
-        <div className="chat-log" ref={chatLogRef} style={{ flexGrow: 1, overflowY: 'auto', padding: '10px', border: '1px solid #ccc', marginBottom: '10px' }}>
-          {conversationHistory.map((item, index) => {
-            if (item.type === 'ai') {
-              return (
-                <div key={index} className="message-row ai-row">
-                  <div className="avatar ai-avatar">🤖</div>
-                  <div className="message ai-message" style={{ backgroundColor: '#f1f8e9' /* Keeping inline for now, CSS class will override */ }}>
-                    {item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0' }}>{line}</p>)}
-                    {item.sources && item.sources.length > 0 && (
-                      <div className="sources-section" style={{ marginTop: '10px', fontSize: '0.9em' }}>
-                        <strong>Sources:</strong>
-                        {item.sources.map((source, idx) => (
-                          <div key={idx} className="source-item" style={{ marginTop: '5px', padding: '5px', backgroundColor: '#e8eaf6', borderRadius: '3px' }}>
-                            <div className="source-header" style={{ fontWeight: 'bold' }}>
-                              {source.metadata.file_path} (Score: {source.score ? source.score.toFixed(2) : 'N/A'})
-                            </div>
-                            <pre className="source-content" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '100px', overflowY: 'auto', backgroundColor: '#fff', padding: '5px', borderRadius: '3px' }}>
-                              <code>{source.content}</code>
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="message-metadata" style={{ fontSize: '0.8em', color: '#555', marginTop: '5px' }}> {/* Added message-metadata class here */}
-                      Model: {item.modelName} {item.filePaths && item.filePaths.length > 0 ? `| Files: ${item.filePaths.join(', ')}` : ''}
-                    </div>
-                  </div>
-                </div>
-              );
-            } else if (item.type === 'user') {
-              return (
-                <div key={index} className="message-row user-row">
-                  <div className="message user-message" style={{ backgroundColor: '#e1f5fe' /* Keeping inline for now, CSS class will override */ }}>
-                    {item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0' }}>{line}</p>)}
-                  </div>
-                  <div className="avatar user-avatar">👤</div>
-                </div>
-              );
-            } else if (item.type === 'error') {
-              return (
-                <div key={index} className="message error-message" style={{ backgroundColor: '#ffcdd2' /* Keeping inline for now, CSS class will override */ }}>
-                  <strong>Error: </strong>{item.text.split('\n').map((line, i) => <p key={i} style={{ margin: '0 0 5px 0', display: 'inline' }}>{line}</p>)}
-                </div>
-              );
-            }
-            return null;
-          })}
-          {loading && (
-            <div className="message-row ai-row"> {/* Mimic AI row for loading indicator */}
-              <div className="avatar ai-avatar">🤖</div>
-              <div className="message ai-message loading-indicator" style={{ fontStyle: 'italic' }}> {/* Added loading-indicator class */}
-                Processing...
-              </div>
-            </div>
-          )}
-        </div>
+    <>
+      <div className="chat-container"> {/* Removed inline style, should be in CSS */}
+        <MessageList
+          referance={messageListReferance}
+          className='message-list'
+          lockable={true}
+          toBottomHeight={'100%'}
+          dataSource={transformedHistory}
+        />
         
-        <form className="chat-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div className="chat-options" style={{ padding: '10px', border: '1px solid #eee', borderRadius: '4px' }}>
-            <div className="form-row" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        {/* Form element is no longer strictly needed if ChatInput handles submission */}
+        <div className="chat-input-area"> {/* New wrapper for options and input */}
+          <div className="chat-options"> {/* Retained chat-options styling */}
+            <div className="form-row">
               <div className="form-group" style={{ flex: 1 }}>
-                <label htmlFor="model-name" style={{ fontSize: '0.9em', marginBottom: '3px', display: 'block' }}>Model:</label>
+                <label htmlFor="model-name">Model:</label>
                 <select
                   id="model-name"
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
                   disabled={loading}
-                  style={{ width: '100%', padding: '5px' }}
                 >
                   <option value="gpt-4o">GPT-4o</option>
                   <option value="o4-mini">O4-mini</option>
                 </select>
               </div>
               
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
-                 {/* Replaced checkbox with a button */}
-                <button 
-                  type="button" 
+              <div className="form-group">
+                <ChatButton 
+                  title="Filter by Files"
+                  text={`📎 Files (${selectedFiles.length})`}
                   onClick={() => setIsFileModalOpen(true)} 
-                  className="action-button" // Using existing class, can be changed
-                  disabled={loading || !currentProjectId} // Disable if no project
-                  style={{padding: '5px 10px', fontSize: '0.9em'}}
-                >
-                  📎 Filter by Files ({selectedFiles.length} selected)
-                </button>
+                  disabled={loading || !currentProjectId}
+                />
               </div>
             </div>
           </div>
           
-          <div className="form-group" style={{ display: 'flex', gap: '10px' }}>
-            <textarea
-              id="query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type your message here..."
-              disabled={loading}
-              required
-              rows={3}
-              style={{ flexGrow: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-            />
-            <button
-              type="submit"
-              className="submit-button"
-              disabled={loading || !query.trim()}
-              style={{ padding: '10px 20px', minHeight: '100%' }}
-            >
-              {loading ? '...' : 'Send'}
-            </button>
-          </div>
-        </form>
+          <ChatInput
+            placeholder="Type your message here..."
+            multiline={true}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !loading) {
+                e.preventDefault(); // Prevent newline in input
+                handleSend(); // Trigger send logic
+              }
+            }}
+            rightButtons={
+              <ChatButton
+                title="Send"
+                text="Send"
+                onClick={handleSend}
+                disabled={loading || !query.trim()}
+              />
+            }
+            inputStyle={{ // Example: Apply some basic styling to ChatInput's textarea
+              border: '1px solid #ced4da',
+              borderRadius: '4px',
+              padding: '10px',
+            }}
+          />
+        </div>
       </div>
 
       {/* File Selection Modal */}
