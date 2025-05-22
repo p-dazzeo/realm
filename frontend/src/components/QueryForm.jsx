@@ -40,7 +40,14 @@ const QueryForm = () => {
     
     const currentFilePaths = selectedFiles.length > 0 ? selectedFiles : null;
 
-    setConversationHistory(prev => [...prev, { type: 'user', text: currentQuery, timestamp: new Date() }]);
+    // Add user message with 'waiting' status
+    const newUserMessage = { 
+      type: 'user', 
+      text: currentQuery, 
+      timestamp: new Date(), 
+      status: 'waiting' 
+    };
+    setConversationHistory(prev => [...prev, newUserMessage]);
     setQuery(''); // Clear input after adding to history
     setLoading(true);
     
@@ -51,19 +58,33 @@ const QueryForm = () => {
         filePaths: currentFilePaths,
         modelName
       });
-      
-      setConversationHistory(prev => [
-        ...prev,
-        { 
-          type: 'ai', 
-          text: response.answer, 
-          sources: response.sources,
-          modelName: modelName,
-          filePaths: currentFilePaths,
-          query: currentQuery,
-          timestamp: new Date()
+
+      // Update status of the last 'waiting' user message to 'sent'
+      // And add the new AI message
+      setConversationHistory(prevHistory => {
+        const lastUserMessageIndex = prevHistory.slice().reverse().findIndex(
+          msg => msg.type === 'user' && msg.status === 'waiting'
+        );
+        
+        let updatedHistory = [...prevHistory];
+        if (lastUserMessageIndex !== -1) {
+          const actualIndex = prevHistory.length - 1 - lastUserMessageIndex;
+          updatedHistory[actualIndex] = { ...updatedHistory[actualIndex], status: 'sent' };
         }
-      ]);
+
+        return [
+          ...updatedHistory,
+          { 
+            type: 'ai', 
+            text: response.answer, 
+            sources: response.sources,
+            modelName: modelName,
+            filePaths: currentFilePaths,
+            query: currentQuery,
+            timestamp: new Date()
+          }
+        ];
+      });
       
       addToRagHistory({
         projectId: currentProjectId,
@@ -84,10 +105,15 @@ const QueryForm = () => {
   };
   
   const transformConversationHistory = () => {
-    return conversationHistory.map(item => {
+    return conversationHistory.map((item, idx) => { // Added idx for unique key if needed by library
+      const itemDate = item.timestamp || new Date();
+      const formattedTime = itemDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
       let messageListItem = {
-        date: item.timestamp || new Date(),
-        avatar: item.type === 'ai' ? '🤖' : (item.type === 'user' ? '👤' : undefined), // Pass avatar string
+        // id: item.id || `msg-${idx}`, // Ensure unique ID if library requires it
+        date: itemDate,
+        dateString: formattedTime, // For explicit time display
+        avatar: item.type === 'ai' ? '🤖' : (item.type === 'user' ? '👤' : undefined),
       };
 
       if (item.type === 'user') {
@@ -95,35 +121,46 @@ const QueryForm = () => {
           ...messageListItem,
           position: 'right',
           type: 'text',
-          title: 'You', // Library uses title for name, avatar prop handles the visual
+          title: 'You', 
           text: item.text,
+          status: item.status,
         };
       } else if (item.type === 'ai') {
-        let aiTextContent = item.text;
-        if (item.sources && item.sources.length > 0) {
-          const sourcesText = item.sources.map((source, idx) => 
-            `\n\nSource ${idx + 1}: ${source.metadata.file_path} (Score: ${source.score ? source.score.toFixed(2) : 'N/A'})\n\`\`\`\n${source.content}\n\`\`\``
-          ).join('');
-          aiTextContent += `\n\n--- Sources ---${sourcesText}`;
-        }
-        if (item.modelName) {
-          aiTextContent += `\n\nModel: ${item.modelName}`;
-        }
+        let aiTextContent = item.text; // Main AI answer
+
         if (item.filePaths && item.filePaths.length > 0) {
-          aiTextContent += ` | Files: ${item.filePaths.join(', ')}`;
+          aiTextContent += `\n\n---\n**Context from:** ${item.filePaths.join(', ')}`;
+        }
+
+        if (item.sources && item.sources.length > 0) {
+          aiTextContent += `\n\n**Sources:**`;
+          item.sources.forEach((source, sIdx) => {
+            // Limiting content snippet length for readability
+            const contentSnippet = source.content.length > 150 
+              ? `${source.content.substring(0, 150)}...` 
+              : source.content;
+            aiTextContent += `\n*   **${source.metadata.file_path}** (Score: ${source.score ? source.score.toFixed(2) : 'N/A'})\n    \`\`\`\n    ${contentSnippet}\n    \`\`\``;
+          });
+        }
+        
+        // Model name is usually displayed by the library's title or can be part of text if needed
+        // For now, title handles "AI", model info can be part of text if desired.
+        // Let's append model name to text for clarity as per previous structure.
+        if (item.modelName) {
+            aiTextContent += `\n\n---\nModel: ${item.modelName}`;
         }
         
         messageListItem = {
           ...messageListItem,
           position: 'left',
-          type: 'text',
+          type: 'text', // Consider 'markdown' if library supports it and styles are added
           title: 'AI',
           text: aiTextContent,
         };
       } else if (item.type === 'error') {
         messageListItem = {
           ...messageListItem,
-          type: 'system',
+          type: 'system', // System messages usually don't have avatars or titles by default
           text: item.text,
         };
       }
@@ -133,13 +170,25 @@ const QueryForm = () => {
   
   let transformedHistory = transformConversationHistory();
   if (loading) {
+    const loadingDate = new Date();
     transformedHistory.push({
       type: 'system',
       text: '🤖 AI is thinking...',
-      date: new Date(),
+      date: loadingDate,
+      dateString: loadingDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     });
   }
 
+
+  const filterFilesButton = (
+    <ChatButton 
+      className="rce-button-filefilter" // Add a custom class for specific styling if needed
+      title="Filter by Files"
+      text={`📎 Files (${selectedFiles.length})`}
+      onClick={() => setIsFileModalOpen(true)} 
+      disabled={loading || !currentProjectId}
+    />
+  );
 
   return (
     <>
@@ -168,19 +217,12 @@ const QueryForm = () => {
                   <option value="o4-mini">O4-mini</option>
                 </select>
               </div>
-              
-              <div className="form-group">
-                <ChatButton 
-                  title="Filter by Files"
-                  text={`📎 Files (${selectedFiles.length})`}
-                  onClick={() => setIsFileModalOpen(true)} 
-                  disabled={loading || !currentProjectId}
-                />
-              </div>
+              {/* "Filter by Files" button is now removed from here */}
             </div>
           </div>
           
           <ChatInput
+            leftButtons={filterFilesButton}
             placeholder="Type your message here..."
             multiline={true}
             value={query}

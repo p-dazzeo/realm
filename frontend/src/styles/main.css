@@ -1099,35 +1099,34 @@ select {
 
 /* QueryForm.jsx - Chat Options */
 .chat-options {
-  padding: 1rem 1.5rem; /* Increased padding */
-  background-color: #f8f9fa; /* Consistent background */
-  border-bottom: 1px solid #e9ecef; /* Standard border */
+  padding: 0.5rem 1.5rem; /* Reduced padding as it only contains model selector */
+  background-color: #f8f9fa; 
+  border-bottom: 1px solid #e9ecef; 
   font-size: 0.9em;
 }
 
 .chat-options .form-row {
-  margin-bottom: 0.75rem; /* Increased margin for compactness */
-  align-items: center; /* Vertically align items in the row */
-}
-.chat-options .form-row:last-child {
-  margin-bottom: 0;
+  margin-bottom: 0; /* Only one row now, remove bottom margin */
+  align-items: center; 
+  justify-content: flex-start; /* Align model selector to the left */
 }
 
 .chat-options .form-group {
-  margin-bottom: 0; /* Remove bottom margin from form-group inside form-row */
-  display: flex; /* Allow label and input to be part of the flex alignment */
-  flex-direction: column; /* Stack label and input */
-  justify-content: center; /* Center content if label is very short */
+  margin-bottom: 0; 
+  display: flex; 
+  flex-direction: row; /* Align label and select side-by-side */
+  align-items: center;
+  gap: 0.5rem; /* Space between label and select */
+  flex-grow: 0 !important; /* Do not allow this group to grow, as it's the only one */
+  flex-basis: auto !important; /* Reset flex-basis if it was set by previous flex:1 */
 }
-/* Remove the paddingTop hack from the JSX for the button's form-group */
-.chat-options .form-group > label { /* Target labels directly inside form-group for model */
-  margin-bottom: 0.25rem; 
+
+.chat-options .form-group > label { 
+  margin-bottom: 0; /* Label is now inline with select */
   font-size: 0.95em;
+  white-space: nowrap;
 }
-.chat-options .form-group > .action-button { /* Target button directly */
-   margin-top: auto; /* Helps align with select if label heights differ, or if no label */
-   margin-bottom: auto; /* Helps align with select */
-}
+/* .chat-options .form-group > .action-button styling is no longer needed here */
 
 
 .chat-options select,
