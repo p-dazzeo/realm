@@ -13,8 +13,30 @@ from backend.rag.llm import generate_rag_response
 from shared.models import RAGRequest, RAGResponse
 from shared.utils import extract_zip
 
-# Configure logging
-logging.basicConfig(level=config.LOG_LEVEL)
+
+# Clear any existing handlers to start fresh
+root_logger = logging.getLogger()
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+# Configure logging with the numeric level from config
+logging.basicConfig(
+    level=config.LOG_LEVEL,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Set higher log levels for noisy libraries
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('openai').setLevel(logging.WARNING)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
+litellm_logger = logging.getLogger('LiteLLM')
+litellm_logger.setLevel(logging.ERROR) 
+litellm_logger.propagate = False
+
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -27,7 +49,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Modify for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,16 +88,12 @@ async def health_check():
 
 
 @app.post("/query", response_model=RAGResponse)
-async def query(
-    request: RAGRequest,
-    vector_store: CodeVectorStore = Depends(get_vector_store)
-):
+async def query(request: RAGRequest):
     """
     Query the RAG system with a question.
     
     Args:
         request: RAG request parameters
-        vector_store: Vector store for the project
         
     Returns:
         RAG response with answer and sources
@@ -83,6 +101,11 @@ async def query(
     logger.info(f"Received RAG query: {request.query}")
     
     try:
+        # Get the vector store for this project
+        if request.project_id not in vector_stores:
+            vector_stores[request.project_id] = CodeVectorStore(request.project_id)
+        vector_store = vector_stores[request.project_id]
+        
         # Search for relevant context
         context_docs = vector_store.search(
             query=request.query,

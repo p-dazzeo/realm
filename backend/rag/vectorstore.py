@@ -3,6 +3,8 @@ Vector store operations for the RAG service.
 """
 import logging
 import os
+import json
+import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -12,8 +14,12 @@ from chromadb.utils import embedding_functions
 from backend.rag import config
 from shared.utils import get_file_contents, list_files
 
-# Configure logging
-logging.basicConfig(level=config.LOG_LEVEL)
+# Configure logging with the numeric level from config
+logging.basicConfig(
+    level=config.LOG_LEVEL,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -31,17 +37,43 @@ class CodeVectorStore:
         """
         self.project_id = project_id
         self.client = chromadb.PersistentClient(path=str(config.CHROMA_DATA_DIR))
-        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction()
         
-        # Get or create collection for this project
-        self.collection = self.client.get_or_create_collection(
-            name=f"project_{project_id}",
-            embedding_function=self.embedding_function,
-            metadata={"project_id": project_id}
+        self.embedding_function = embedding_functions.OpenAIEmbeddingFunction(
+            api_key=config.OPENAI_API_KEY,
+            model_name="text-embedding-3-small"
         )
         
-        logger.info(f"Initialized vector store for project: {project_id}")
-    
+        collection_name = f"project_{project_id}"
+        
+        # Check if collection exists and handle embedding function mismatch
+        try:
+            # Try to get existing collection
+            self.collection = self.client.get_collection(
+                name=collection_name,
+                embedding_function=self.embedding_function
+            )
+            logger.info(f"Retrieved existing collection for project: {project_id}")
+            
+            collection_count = self.collection.count()
+            logger.debug(f"Collection '{collection_name}' contains {collection_count} documents")
+            
+        except Exception as e:
+            # If there's an embedding function mismatch or other error, delete and recreate
+            if "Embedding function name mismatch" in str(e):
+                logger.warning(f"Embedding function mismatch detected for {collection_name}, recreating collection")
+                try:
+                    self.client.delete_collection(name=collection_name)
+                    logger.info(f"Deleted collection {collection_name} due to embedding function mismatch")
+                except Exception as del_e:
+                    logger.error(f"Error deleting collection: {str(del_e)}")
+            
+            self.collection = self.client.create_collection(
+                name=collection_name,
+                embedding_function=self.embedding_function,
+                metadata={"project_id": project_id}
+            )
+            logger.info(f"Created new collection for project: {project_id}")
+        
     def index_project(self, project_dir: Path) -> int:
         """
         Index all code files in the project directory.
@@ -56,6 +88,7 @@ class CodeVectorStore:
         
         # Get all files in the project
         files = list_files(project_dir)
+        logger.debug(f"Found {len(files)} files to process")
         
         # Track number of files indexed
         indexed_count = 0
@@ -79,6 +112,9 @@ class CodeVectorStore:
                     "file_type": file_path.suffix,
                     "file_name": file_path.name
                 }
+                
+                # Debug log the file being indexed
+                logger.debug(f"Indexing file: {file_id} ({len(content)} chars)")
                 
                 # Add to collection (upsert to handle updates)
                 self.collection.upsert(
@@ -109,10 +145,14 @@ class CodeVectorStore:
         """
         logger.info(f"Searching for: {query}")
         
+        # Debug log search parameters
+        logger.debug(f"Search parameters - limit: {limit}, file_paths: {file_paths}")
+        
         # Prepare where clause if file paths are specified
         where = None
         if file_paths:
             where = {"file_path": {"$in": file_paths}}
+            logger.debug(f"Using where clause: {where}")
         
         # Query the collection
         results = self.collection.query(
@@ -122,6 +162,9 @@ class CodeVectorStore:
             include=["metadatas", "documents", "distances"]
         )
         
+        # Debug log raw results
+        logger.debug(f"Raw query results - Found {len(results['documents'][0])} documents")
+        
         # Format results
         formatted_results = []
         for i, (doc, metadata, distance) in enumerate(zip(
@@ -129,10 +172,13 @@ class CodeVectorStore:
             results["metadatas"][0],
             results["distances"][0]
         )):
+            relevance_score = 1.0 - (distance / 2.0)  # Convert distance to relevance score   
+            
+            # Add to formatted results (without the truncation for actual result)
             formatted_results.append({
                 "content": doc,
                 "metadata": metadata,
-                "relevance_score": 1.0 - (distance / 2.0)  # Convert distance to relevance score
+                "relevance_score": relevance_score
             })
         
         return formatted_results 
