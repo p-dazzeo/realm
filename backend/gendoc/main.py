@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Form, APIRou
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.gendoc import config
-from backend.gendoc.llm import generate_documentation
+from backend.gendoc.llm import execute_workflow # Changed import
 from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow
 from shared.utils import extract_zip, get_file_contents, list_files
 
@@ -111,32 +111,43 @@ async def generate(request: DocumentationRequest):
     Returns:
         Generated documentation
     """
-    logger.info(f"Received documentation request for project: {request.project_id}")
-    
+    logger.info(f"Received documentation request for project: {request.project_id} using workflow: {request.workflow.name if request.workflow else 'None'}")
+
+    if not request.workflow:
+        raise HTTPException(status_code=400, detail="Workflow is required for documentation generation.")
+
     # Check if project directory exists
     project_dir = config.STORAGE_DIR / request.project_id
-    manifest_path = project_dir / "manifest.json"
     if not project_dir.exists():
+        logger.error(f"Project {request.project_id} not found for documentation generation.")
         raise HTTPException(status_code=404, detail=f"Project {request.project_id} not found")
     
-    # Get the file content if a specific file is requested
-    if request.file_path:
-        file_path = project_dir / request.file_path
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"File {request.file_path} not found")
-        
-        code_content = get_file_contents(str(file_path))
-        manifest_content = get_file_contents(str(manifest_path))
-        if code_content is None:
-            raise HTTPException(status_code=400, detail=f"Could not read file {request.file_path}")
-                    
-    # Generate documentation
     try:
-        response = generate_documentation(request, code_content, manifest_content)
-        return response
+        documentation_content = await execute_workflow(
+            project_id=request.project_id,
+            workflow=request.workflow,
+            model_name=request.model_name,
+            temperature=request.temperature,
+            additional_params=request.additional_params
+        )
+        
+        response_payload = DocumentationResponse(
+            project_id=request.project_id,
+            documentation=documentation_content,
+            doc_type=request.workflow.doc_type, # Use the doc_type from the workflow
+            metadata={
+                "workflow_used": request.workflow.name,
+                "requested_doc_type_parameter": request.doc_type.value # Store the original request's doc_type for reference
+            },
+            file_path=request.file_path # Can be None if not applicable
+        )
+        return response_payload
+    except HTTPException:
+        # Re-raise HTTPExceptions (e.g., from manifest loading, input resolution in execute_workflow)
+        raise
     except Exception as e:
-        logger.error(f"Error generating documentation: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating documentation: {str(e)}")
+        logger.error(f"Error generating documentation for project {request.project_id} with workflow {request.workflow.name}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while generating documentation with workflow: {str(e)}")
 
 
 @app.post("/upload")

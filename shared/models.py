@@ -2,7 +2,7 @@
 Shared data models for REALM services.
 """
 from enum import Enum
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Literal
 from pydantic import BaseModel, Field
 
 
@@ -27,13 +27,21 @@ class DocumentationRequest(BaseModel):
     additional_context: Optional[Dict[str, Any]] = Field(None, description="Additional context for the LLM")
     workflow_type: Optional[str] = Field(None, description="Type of workflow to use for documentation generation")
     workflow: Optional['DocumentationWorkflow'] = Field(None, description="Custom workflow definition")
+    additional_params: Optional[Dict[str, Any]] = Field(None, description="Additional parameters for the workflow")
+
+
+class WorkflowInput(BaseModel):
+    name: str # Name of the variable for the prompt template
+    source: Literal['manifest', 'file_content', 'step_output', 'project_file_path', 'literal', 'runtime_param'] # Origin of the input. Added 'runtime_param'
+    identifier: str # Key in manifest, file path, previous step name, literal value, runtime param name, etc.
 
 
 class WorkflowStep(BaseModel):
     """A single step in a documentation workflow."""
     name: str = Field(..., description="Name of the workflow step")
+    system_prompt: Optional[str] = Field(None, description="System prompt for this step")
     prompt: str = Field(..., description="Prompt template for this step")
-    inputs: List[str] = Field(..., description="Inputs required for this step, can refer to previous step outputs or context")
+    inputs: List[WorkflowInput] = Field(..., description="Inputs required for this step, can refer to previous step outputs or context")
     output_type: str = Field("text", description="Expected output type for this step (e.g., 'text', 'json')")
 
 
@@ -41,6 +49,8 @@ class DocumentationWorkflow(BaseModel):
     """Defines a custom workflow for documentation generation."""
     name: str = Field(..., description="Name of the documentation workflow")
     description: Optional[str] = Field(None, description="Description of the workflow")
+    system_prompt: Optional[str] = Field(None, description="System prompt for the entire workflow")
+    variables_from_manifest: List[str] = Field(default_factory=list, description="List of variable names to be sourced from the project manifest")
     doc_type: DocumentationType = Field(DocumentationType.OVERVIEW, description="The type of documentation this workflow generates")
     steps: List[WorkflowStep] = Field(..., description="List of steps in the workflow")
 
