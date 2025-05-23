@@ -94,9 +94,10 @@ def get_prompt_for_doc_type(doc_type: DocumentationType, code_content: str,
     ]
 
 
-def generate_documentation(request: DocumentationRequest, code_content: str) -> DocumentationResponse:
+def generate_single_file_documentation(request: DocumentationRequest, code_content: str) -> DocumentationResponse:
     """
-    Generate documentation using LiteLLM.
+    Generate documentation using LiteLLM for a single file.
+    Generate documentation using LiteLLM for a single file.
     
     Args:
         request: Documentation request parameters
@@ -105,7 +106,7 @@ def generate_documentation(request: DocumentationRequest, code_content: str) -> 
     Returns:
         Documentation response with generated content
     """
-    logger.info(f"Generating documentation for project: {request.project_id}, file: {request.file_path}")
+    logger.info(f"Generating single file documentation for project: {request.project_id}, file: {request.file_path}")
 
     # If a workflow is provided directly, use it
     if request.workflow:
@@ -176,7 +177,7 @@ def generate_documentation(request: DocumentationRequest, code_content: str) -> 
         return doc_response
         
     except Exception as e:
-        logger.error(f"Error generating standard documentation: {str(e)}")
+        logger.error(f"Error generating single file documentation: {str(e)}")
         raise
 
 

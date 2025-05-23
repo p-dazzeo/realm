@@ -258,4 +258,187 @@ def test_generate_documentation_uses_standard_path_no_workflow(
     mock_completion.assert_called_once()
     assert response.documentation == "Standard LLM response"
 
-pytest.main()
+# pytest.main() # Usually commented out or removed for test suite runs
+
+# --- Tests for process_manifest_group ---
+
+from backend.gendoc.llm import process_manifest_group, DEFAULT_GROUP_WORKFLOW_FILE
+from pathlib import Path # Required for Path.exists mocking
+
+@pytest.fixture
+def primary_code_content_sample():
+    return "PRIMARY FILE CONTENT\ndef main():\n  pass"
+
+@pytest.fixture
+def group_doc_request_base(sample_code_content): # Use sample_code_content for consistency if needed elsewhere
+    return DocumentationRequest(
+        project_id="group_test_project",
+        file_path="primary_doc.py", # Path to the primary file of the group
+        doc_type=DocumentationType.COMPONENT, # Overall doc type for the request
+        model_name="test_group_model",
+        additional_context={
+            "group_id": "test_group_001",
+            "group_type": "python_component_group",
+            "group_description": "A group of related Python files for a component.",
+            "related_files": [
+                {"path": "related1.py", "role": "utility", "content": "def util1(): pass"},
+                {"path": "related2.py", "role": "helper", "content": "def helper_func(): pass"}
+            ],
+            "project_context": {"project_name": "MyOverallProject", "version": "1.2.0"},
+            "group_specific_context": {"complexity": "high", "status": "beta"}
+        }
+        # workflow and workflow_type will be set by individual tests
+    )
+
+class TestProcessManifestGroup:
+
+    @patch('backend.gendoc.llm.execute_workflow')
+    def test_pmg_with_provided_workflow(self, mock_execute_workflow, group_doc_request_base, sample_workflow, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        request.workflow = sample_workflow # Directly provide a workflow object
+        
+        mock_execute_workflow.return_value = MagicMock(spec=DocumentationResponse) # Ensure it returns a valid type
+
+        process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_called_once()
+        call_args = mock_execute_workflow.call_args[0]
+        assert call_args[0].workflow == sample_workflow
+        assert call_args[0] == request # The request object itself (with workflow)
+        assert call_args[1] == primary_code_content_sample
+
+    @patch('backend.gendoc.llm.execute_workflow')
+    @patch('builtins.open')
+    @patch('pathlib.Path.exists')
+    def test_pmg_with_workflow_type_loads_standard(self, mock_path_exists, mock_open, mock_execute_workflow, group_doc_request_base, sample_workflow_data, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        request.workflow_type = "test_workflow_type" # This type should trigger loading
+
+        # Simulate the standard workflow file existing
+        workflow_file_path = gendoc_config.STORAGE_DIR / "_workflows" / f"{request.workflow_type}-standard.json"
+        mock_path_exists.side_effect = lambda path: str(path) == str(workflow_file_path)
+        
+        # Mock open to return the content of this workflow
+        mock_file_content = json.dumps(sample_workflow_data)
+        mock_open.return_value.__enter__.return_value.read.return_value = mock_file_content
+        
+        mock_execute_workflow.return_value = MagicMock(spec=DocumentationResponse)
+
+        process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_called_once()
+        called_request = mock_execute_workflow.call_args[0][0]
+        assert called_request.workflow is not None
+        assert called_request.workflow.name == sample_workflow_data["name"]
+        assert called_request.workflow_type == request.workflow_type # Should remain the specific type
+        assert mock_execute_workflow.call_args[0][1] == primary_code_content_sample
+
+    @patch('backend.gendoc.llm.execute_workflow')
+    @patch('builtins.open')
+    @patch('pathlib.Path.exists')
+    def test_pmg_with_failed_workflow_type_loads_generic(self, mock_path_exists, mock_open, mock_execute_workflow, group_doc_request_base, sample_workflow_data, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        request.workflow_type = "nonexistent_type" # This specific type won't be found
+
+        specific_workflow_path = gendoc_config.STORAGE_DIR / "_workflows" / f"{request.workflow_type}-standard.json"
+        generic_workflow_path = gendoc_config.STORAGE_DIR / "_workflows" / DEFAULT_GROUP_WORKFLOW_FILE
+
+        def path_exists_side_effect(path):
+            if str(path) == str(specific_workflow_path): return False # Specific does not exist
+            if str(path) == str(generic_workflow_path): return True   # Generic does exist
+            return False
+        mock_path_exists.side_effect = path_exists_side_effect
+        
+        # Mock open for the generic workflow
+        generic_workflow_content = {**sample_workflow_data, "name": "GenericGroupWorkflow"}
+        mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(generic_workflow_content)
+        
+        mock_execute_workflow.return_value = MagicMock(spec=DocumentationResponse)
+
+        process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_called_once()
+        called_request = mock_execute_workflow.call_args[0][0]
+        assert called_request.workflow is not None
+        assert called_request.workflow.name == "GenericGroupWorkflow"
+        # In this case, workflow_type in the request might still be "nonexistent_type" or updated to generic,
+        # depending on llm.py logic. The important part is that generic workflow was loaded.
+        # Current llm.py logic: keeps original_workflow_type if specific load failed, then generic loaded.
+        assert called_request.workflow_type == request.workflow_type # Original type is preserved
+        assert mock_execute_workflow.call_args[0][1] == primary_code_content_sample
+    
+    @patch('backend.gendoc.llm.execute_workflow')
+    @patch('builtins.open')
+    @patch('pathlib.Path.exists')
+    def test_pmg_no_specific_workflow_loads_generic(self, mock_path_exists, mock_open, mock_execute_workflow, group_doc_request_base, sample_workflow_data, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        # No request.workflow or request.workflow_type
+
+        generic_workflow_path = gendoc_config.STORAGE_DIR / "_workflows" / DEFAULT_GROUP_WORKFLOW_FILE
+        mock_path_exists.side_effect = lambda path: str(path) == str(generic_workflow_path)
+        
+        generic_workflow_content = {**sample_workflow_data, "name": "GenericDefaultWorkflow"}
+        mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(generic_workflow_content)
+        
+        mock_execute_workflow.return_value = MagicMock(spec=DocumentationResponse)
+
+        process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_called_once()
+        called_request = mock_execute_workflow.call_args[0][0]
+        assert called_request.workflow is not None
+        assert called_request.workflow.name == "GenericDefaultWorkflow"
+        assert called_request.workflow_type == "GenericDefaultWorkflow" # llm.py sets this if original was None
+        assert mock_execute_workflow.call_args[0][1] == primary_code_content_sample
+
+    @patch('backend.gendoc.llm.completion') # Mock litellm.completion
+    @patch('backend.gendoc.llm.execute_workflow') # To ensure it's NOT called
+    @patch('pathlib.Path.exists', return_value=False) # All workflow files do not exist
+    def test_pmg_fallback_to_direct_llm_call(self, mock_path_exists_all_false, mock_execute_workflow, mock_litellm_completion, group_doc_request_base, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        # No workflow hints in request, and Path.exists will make all workflow loading fail
+
+        # Setup mock for litellm.completion (direct call)
+        mock_llm_response = MagicMock()
+        mock_llm_message = MagicMock(content="Direct LLM call output for group")
+        mock_llm_response.choices = [MagicMock(message=mock_llm_message)]
+        mock_llm_response.usage = MagicMock(prompt_tokens=20, completion_tokens=40, total_tokens=60)
+        mock_llm_response.usage.model_dump = MagicMock(return_value={"prompt_tokens":20, "completion_tokens":40, "total_tokens":60})
+        mock_litellm_completion.return_value = mock_llm_response
+
+        response = process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_not_called()
+        mock_litellm_completion.assert_called_once()
+        
+        # Assertions for the direct LLM call prompt
+        call_args = mock_litellm_completion.call_args[1] # kwargs
+        messages = call_args['messages']
+        user_prompt = next(m['content'] for m in messages if m['role'] == 'user')
+
+        assert primary_code_content_sample in user_prompt
+        assert request.additional_context["group_id"] in user_prompt
+        assert json.dumps(request.additional_context["related_files"]) in user_prompt # Check for stringified list
+        assert json.dumps(request.additional_context["project_context"]) in user_prompt
+        assert json.dumps(request.additional_context["group_specific_context"]) in user_prompt
+        
+        assert response.documentation == "Direct LLM call output for group"
+        assert response.metadata["direct_llm_call_fallback_processed"] is True
+        assert response.metadata["group_id"] == request.additional_context["group_id"]
+
+    @patch('backend.gendoc.llm.execute_workflow')
+    def test_pmg_workflow_execution_error_returns_error_response(self, mock_execute_workflow, group_doc_request_base, sample_workflow, primary_code_content_sample):
+        request = group_doc_request_base.model_copy(deep=True)
+        request.workflow = sample_workflow
+        
+        error_message = "Simulated workflow execution failure!"
+        mock_execute_workflow.side_effect = Exception(error_message)
+
+        response = process_manifest_group(request, primary_code_content_sample)
+
+        mock_execute_workflow.assert_called_once()
+        assert response.documentation.startswith(f"Error during workflow execution for group (Primary: {request.file_path}, Workflow: {sample_workflow.name}): {error_message}")
+        assert response.metadata["workflow_execution_error"] is True
+        assert response.metadata["workflow_name"] == sample_workflow.name
+        assert response.metadata["group_id"] == request.additional_context["group_id"]
+        assert response.token_usage["total_tokens"] == 0

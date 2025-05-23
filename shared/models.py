@@ -13,6 +13,7 @@ class DocumentationType(str, Enum):
     COMPONENT = "component"
     FUNCTION = "function"
     API = "api"
+    JCL_COBOL_ANALYSIS = "jcl_cobol_analysis" # New type for JCL-COBOL workflow
 
 
 class DocumentationRequest(BaseModel):

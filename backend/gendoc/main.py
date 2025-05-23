@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Form, APIRou
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.gendoc import config
-from backend.gendoc.llm import generate_documentation
-from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow # Added DocumentationWorkflow
+from backend.gendoc.llm import generate_single_file_documentation, process_manifest_group # Updated import
+from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow, DocumentationType # Added DocumentationWorkflow and DocumentationType
 from shared.utils import extract_zip, get_file_contents, list_files
 
 # Configure logging
@@ -120,29 +120,250 @@ async def generate(request: DocumentationRequest):
         code_content = get_file_contents(str(file_path))
         if code_content is None:
             raise HTTPException(status_code=400, detail=f"Could not read file {request.file_path}")
+        
+        # Generate documentation for a single specified file
+        try:
+            response = generate_single_file_documentation(request, code_content)
+            return response
+        except Exception as e:
+            logger.error(f"Error generating documentation for file {request.file_path}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error generating documentation for file: {str(e)}")
     else:
-        # If no specific file, combine a representative set of files (for project-level documentation)
+        # Project-level or multi-file documentation request
+        manifest_path = project_dir / "manifest.json"
+        if manifest_path.exists():
+            logger.info(f"Found manifest.json for project {request.project_id}")
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest_data = json.load(f)
+                
+                # Initialize shared variables for aggregated response
+                aggregated_docs_content = []
+                cumulative_token_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                processed_manifest_type = "unknown" # Will be updated based on detection
+
+                # --- Enhanced Relationship Manifest (v1.1) Detection ---
+                if manifest_data.get("manifest_version") == "1.1" and isinstance(manifest_data.get("processing_groups"), list):
+                    processed_manifest_type = "enhanced_v1.1"
+                    logger.info(f"Processing enhanced relationship manifest (v1.1) for project {request.project_id}")
+                    
+                    processing_groups = manifest_data.get("processing_groups", [])
+                    processed_group_ids = []
+
+                    for group in processing_groups:
+                        if not isinstance(group, dict) or "primary_file" not in group:
+                            logger.warning(f"Skipping invalid group in manifest: {group}. Missing 'primary_file'.")
+                            continue
+                        
+                        primary_file_path_str = group["primary_file"]
+                        primary_file_full_path = project_dir / primary_file_path_str
+                        
+                        if not primary_file_full_path.exists():
+                            logger.warning(f"Primary file {primary_file_path_str} from group {group.get('group_id', 'N/A')} not found. Skipping group.")
+                            aggregated_docs_content.append(f"\n\n---\nGroup: {group.get('group_id', 'N/A')} (Primary File: {primary_file_path_str}) - SKIPPED (Primary file not found)\n---")
+                            continue
+
+                        primary_file_content = get_file_contents(str(primary_file_full_path))
+                        if primary_file_content is None:
+                            logger.warning(f"Could not read content of primary file {primary_file_path_str} from group {group.get('group_id', 'N/A')}. Skipping group.")
+                            aggregated_docs_content.append(f"\n\n---\nGroup: {group.get('group_id', 'N/A')} (Primary File: {primary_file_path_str}) - SKIPPED (Could not read primary file)\n---")
+                            continue
+
+                        related_files_content = []
+                        for rf_info in group.get("related_files", []):
+                            if not isinstance(rf_info, dict) or "path" not in rf_info or "role" not in rf_info:
+                                logger.warning(f"Skipping invalid related_file entry in group {group.get('group_id', 'N/A')}: {rf_info}")
+                                continue
+                            
+                            related_file_path = project_dir / rf_info["path"]
+                            if not related_file_path.exists():
+                                logger.warning(f"Related file {rf_info['path']} from group {group.get('group_id', 'N/A')} not found. Skipping.")
+                                continue
+                            
+                            rf_content = get_file_contents(str(related_file_path))
+                            if rf_content is not None:
+                                related_files_content.append({
+                                    "path": rf_info["path"],
+                                    "role": rf_info["role"],
+                                    "content": rf_content
+                                })
+                            else:
+                                logger.warning(f"Could not read content of related file {rf_info['path']} from group {group.get('group_id', 'N/A')}. Skipping.")
+
+                        additional_context_for_group = {
+                            "group_id": group.get("group_id"),
+                            "group_type": group.get("group_type"),
+                            "group_description": group.get("group_description"),
+                            "group_specific_context": group.get("group_specific_context"),
+                            "project_context": manifest_data.get("project_context"), # Project-level context from manifest
+                            "related_files": related_files_content
+                        }
+                        
+                        # Merge with original request's additional_context if any, prioritizing group-specific
+                        final_additional_context = {**(request.additional_context or {}), **additional_context_for_group}
+
+                        group_specific_request = DocumentationRequest(
+                            project_id=request.project_id,
+                            file_path=primary_file_path_str, # Primary file for this group
+                            doc_type=request.doc_type, # Original doc_type, or could be group-specific
+                            model_name=request.model_name,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                            custom_prompt=group.get("custom_prompt_for_group") or request.custom_prompt, # Group can override
+                            additional_context=final_additional_context,
+                            workflow=request.workflow, # Pass workflow if provided (could also be group-specific)
+                            workflow_type=request.workflow_type
+                        )
+
+                        try:
+                            response_for_group = process_manifest_group(group_specific_request, primary_file_content)
+                            doc_title = f"Group: {group.get('group_id', 'N/A')} (Primary File: {primary_file_path_str})"
+                            aggregated_docs_content.append(f"\n\n---\n{doc_title}\n---\n\n{response_for_group.documentation}")
+                            
+                            if response_for_group.token_usage:
+                                cumulative_token_usage["prompt_tokens"] += response_for_group.token_usage.get("prompt_tokens", 0)
+                                cumulative_token_usage["completion_tokens"] += response_for_group.token_usage.get("completion_tokens", 0)
+                                cumulative_token_usage["total_tokens"] += response_for_group.token_usage.get("total_tokens", 0)
+                            processed_group_ids.append(group.get('group_id', primary_file_path_str))
+                        except Exception as e:
+                            logger.error(f"Error processing group {group.get('group_id', 'N/A')} (Primary: {primary_file_path_str}): {str(e)}")
+                            aggregated_docs_content.append(f"\n\n---\nGroup: {group.get('group_id', 'N/A')} (Primary File: {primary_file_path_str}) - ERROR ({str(e)})\n---")
+                    
+                    return DocumentationResponse(
+                        project_id=request.project_id,
+                        documentation="".join(aggregated_docs_content),
+                        doc_type=request.doc_type,
+                        file_path=None,
+                        metadata={
+                            "processed_from_manifest": True,
+                            "manifest_version_processed": "1.1",
+                            "groups_processed": processed_group_ids,
+                            "original_request_doc_type": request.doc_type.value
+                        },
+                        token_usage=cumulative_token_usage
+                    )
+
+                # --- Simple Order-Only Manifest (v1.0) Detection ---
+                elif isinstance(manifest_data.get("files"), list):
+                    processed_manifest_type = "simple_v1.0"
+                    logger.info(f"Processing simple order-only manifest (v1.0) for project {request.project_id}")
+                    
+                    processed_files_from_manifest = []
+                    for file_in_manifest in manifest_data["files"]:
+                        current_file_path = project_dir / file_in_manifest
+                        if not current_file_path.exists():
+                            logger.warning(f"File {file_in_manifest} from manifest not found. Skipping.")
+                            continue
+
+                        file_content = get_file_contents(str(current_file_path))
+                        if file_content is None:
+                            logger.warning(f"Could not read content of file {file_in_manifest}. Skipping.")
+                            continue
+                        
+                        processed_files_from_manifest.append(file_in_manifest)
+                        file_specific_request = DocumentationRequest(
+                            project_id=request.project_id, file_path=file_in_manifest,
+                            doc_type=request.doc_type, model_name=request.model_name,
+                            temperature=request.temperature, max_tokens=request.max_tokens,
+                            custom_prompt=request.custom_prompt, additional_context=request.additional_context,
+                            workflow=request.workflow, workflow_type=request.workflow_type
+                        )
+                        try:
+                            response_for_file = generate_single_file_documentation(file_specific_request, file_content)
+                            aggregated_docs_content.append(f"\n\n---\nFile: {file_in_manifest}\n---\n\n{response_for_file.documentation}")
+                            if response_for_file.token_usage:
+                                cumulative_token_usage["prompt_tokens"] += response_for_file.token_usage.get("prompt_tokens", 0)
+                                cumulative_token_usage["completion_tokens"] += response_for_file.token_usage.get("completion_tokens", 0)
+                                cumulative_token_usage["total_tokens"] += response_for_file.token_usage.get("total_tokens", 0)
+                        except Exception as e:
+                            logger.error(f"Error generating documentation for file {file_in_manifest} (from manifest v1.0): {str(e)}")
+                            aggregated_docs_content.append(f"\n\n---\nFile: {file_in_manifest}\n---\n\nError: {str(e)}")
+                    
+                    return DocumentationResponse(
+                        project_id=request.project_id, documentation="".join(aggregated_docs_content),
+                        doc_type=request.doc_type, file_path=None,
+                        metadata={
+                            "processed_from_manifest": True, "manifest_version_processed": "1.0",
+                            "files_processed": processed_files_from_manifest,
+                            "original_request_doc_type": request.doc_type.value
+                        },
+                        token_usage=cumulative_token_usage
+                    )
+                
+                # --- Unrecognized Manifest Format ---
+                else:
+                    logger.warning(f"Unrecognized manifest.json format for project {request.project_id}. Proceeding to fallback summarization.")
+                    # Fall through to the `else` block outside of `if manifest_path.exists()`
+
+            except json.JSONDecodeError:
+                # This specifically catches malformed JSON
+                raise HTTPException(status_code=400, detail="Invalid manifest.json: Could not parse JSON.")
+            # Other exceptions during manifest processing (e.g., unexpected structure not caught by specific checks)
+            # will lead to a 500 error by the generic exception handler for the endpoint, or could be caught here.
+            except Exception as e: # Catch any other manifest processing error before fallback
+                logger.error(f"Error processing manifest.json for project {request.project_id}: {str(e)}. Proceeding to fallback summarization.")
+                # Fall through to the `else` block by not returning a response here.
+        
+        # Fallback Logic: Either manifest_path does not exist OR manifest was unrecognized/errored before returning
+        # This 'else' corresponds to 'if manifest_path.exists() and processed_manifest_type != "unknown"' (implicitly)
+        # Or more accurately, if no response has been returned yet from manifest processing.
+        
+        # The following code will execute if:
+        # 1. manifest_path does not exist.
+        # 2. manifest_path exists, but its format was unrecognized (neither v1.1 groups nor v1.0 files).
+        # 3. manifest_path exists, but an Exception occurred during its processing (other than JSONDecodeError, which raises HTTP 400).
+        
+        logger.info(f"No valid/recognized manifest processed for project {request.project_id}. Using fallback summarization.")
         code_content = ""
         file_count = 0
-        for root, _, files in os.walk(project_dir):
-            for file in files:
-                file_path = Path(root) / file
-                if file_count >= 10:  # Limit to 10 files for overview
-                    break
-                    
-                content = get_file_contents(str(file_path))
-                if content is not None:
-                    rel_path = file_path.relative_to(project_dir)
-                    code_content += f"\n\n# File: {rel_path}\n\n{content}"
-                    file_count += 1
-    
-    # Generate documentation
-    try:
-        response = generate_documentation(request, code_content)
-        return response
-    except Exception as e:
-        logger.error(f"Error generating documentation: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating documentation: {str(e)}")
+        # Limit which files are included for project overview to avoid excessive length
+        # Prioritize common code files and exclude certain directories/files if necessary
+        # This is a simplified approach; more sophisticated filtering might be needed
+        excluded_dirs = {".git", "__pycache__", "node_modules", "venv", ".vscode"}
+        excluded_extensions = {".log", ".tmp", ".bak", ".zip", ".gz", ".tar", ".DS_Store"} # etc.
+
+        files_concatenated = []
+        for root, dirs, files_in_dir in os.walk(project_dir):
+            # Modify dirs in-place to exclude unwanted directories from os.walk
+            dirs[:] = [d for d in dirs if d not in excluded_dirs]
+            
+            if file_count >= 10: break
+            for file_name in files_in_dir:
+                if file_count >= 10: break
+                
+                file_path_obj = Path(root) / file_name
+                if any(part in excluded_dirs for part in file_path_obj.parts) or file_path_obj.suffix in excluded_extensions:
+                    continue
+
+                try:
+                    content = get_file_contents(str(file_path_obj))
+                    if content:
+                        rel_path = file_path_obj.relative_to(project_dir)
+                        code_content += f"\n\n# File: {str(rel_path)}\n\n{content}"
+                        files_concatenated.append(str(rel_path))
+                        file_count += 1
+                except Exception as e:
+                    logger.warning(f"Could not read or process file {file_path_obj} during fallback: {str(e)}")
+        
+        if not code_content:
+                raise HTTPException(status_code=400, detail="No processable files found for project overview.")
+
+        # Generate documentation using the concatenated content
+        try:
+            # The request here is the original request, which might have a specific doc_type
+            # like OVERVIEW, which is appropriate for this concatenated content.
+            fallback_request = request # Use the original request for fallback
+            response = generate_single_file_documentation(fallback_request, code_content)
+            # Add metadata about which files were included in this fallback mode
+            if response.metadata:
+                response.metadata["fallback_processed"] = True
+                response.metadata["fallback_files_concatenated"] = files_concatenated
+            else:
+                response.metadata = {"fallback_processed": True, "fallback_files_concatenated": files_concatenated}
+            return response
+        except Exception as e:
+            logger.error(f"Error generating documentation with fallback for project {request.project_id}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error generating documentation with fallback: {str(e)}")
 
 
 @app.post("/upload")
