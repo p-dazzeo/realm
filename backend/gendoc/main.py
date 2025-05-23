@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.gendoc import config
 from backend.gendoc.llm import generate_documentation
-from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow # Added DocumentationWorkflow
+from shared.models import DocumentationRequest, DocumentationResponse, DocumentationWorkflow
 from shared.utils import extract_zip, get_file_contents, list_files
 
 # Configure logging
@@ -115,6 +115,7 @@ async def generate(request: DocumentationRequest):
     
     # Check if project directory exists
     project_dir = config.STORAGE_DIR / request.project_id
+    manifest_path = project_dir / "manifest.json"
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project {request.project_id} not found")
     
@@ -125,27 +126,13 @@ async def generate(request: DocumentationRequest):
             raise HTTPException(status_code=404, detail=f"File {request.file_path} not found")
         
         code_content = get_file_contents(str(file_path))
+        manifest_content = get_file_contents(str(manifest_path))
         if code_content is None:
             raise HTTPException(status_code=400, detail=f"Could not read file {request.file_path}")
-    else:
-        # If no specific file, combine a representative set of files (for project-level documentation)
-        code_content = ""
-        file_count = 0
-        for root, _, files in os.walk(project_dir):
-            for file in files:
-                file_path = Path(root) / file
-                if file_count >= 10:  # Limit to 10 files for overview
-                    break
                     
-                content = get_file_contents(str(file_path))
-                if content is not None:
-                    rel_path = file_path.relative_to(project_dir)
-                    code_content += f"\n\n# File: {rel_path}\n\n{content}"
-                    file_count += 1
-    
     # Generate documentation
     try:
-        response = generate_documentation(request, code_content)
+        response = generate_documentation(request, code_content, manifest_content)
         return response
     except Exception as e:
         logger.error(f"Error generating documentation: {str(e)}")
