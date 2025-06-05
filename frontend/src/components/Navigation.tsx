@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Upload, FileText, MessageSquare, Book, User } from 'lucide-react';
+import { Upload, FileText, MessageSquare, Book, User, AlignCenter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const Navigation = () => {
@@ -18,8 +18,11 @@ const Navigation = () => {
   return (
     <nav className="bg-slate-900 text-white w-64 min-h-screen p-6 flex flex-col">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-blue-400">REALM</h1>
-        <p className="text-sm text-slate-400 mt-1">Documentation Generator</p>
+        <center>
+          <img src='/core_reply_logo.png'></img>
+          <h1 className="text-2xl font-bold text-blue-400">REALM.</h1>
+          <p className="text-sm text-slate-400 mt-1">Reverse Engineering Agent for Legacy Modernization</p>
+        </center>
       </div>
       
       <ul className="space-y-2 flex-1">
