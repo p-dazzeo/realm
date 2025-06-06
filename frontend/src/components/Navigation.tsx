@@ -4,7 +4,11 @@ import { NavLink } from 'react-router-dom';
 import { Upload, FileText, MessageSquare, Book, User, AlignCenter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const Navigation = () => {
+interface NavigationProps {
+  isVisible: boolean;
+}
+
+const Navigation = ({ isVisible }: NavigationProps) => {
   const navItems = [
     { to: '/upload', icon: Upload, label: 'Upload' },
     { to: '/generate', icon: FileText, label: 'Generate' },
@@ -16,7 +20,9 @@ const Navigation = () => {
   const userId = "user_123456";
 
   return (
-    <nav className="bg-slate-900 text-white w-64 min-h-screen p-6 flex flex-col">
+    <nav className={`bg-slate-900 text-white w-64 min-h-screen p-6 flex flex-col transition-transform duration-300 ease-in-out ${
+      isVisible ? 'translate-x-0' : '-translate-x-full'
+    }`}>
       <div className="mb-8">
         <center>
           <img src='/core_reply_logo.png'></img>

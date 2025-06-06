@@ -3,7 +3,6 @@ import { Download, FileText, ArrowLeft, Search, X } from 'lucide-react'; // Adde
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -244,7 +243,7 @@ const ViewDocs = () => {
   const zipFormatOptions: { value: keyof DocumentFile['content']; label: string }[] = [
     { value: 'txt', label: 'TXT' },
     { value: 'md', label: 'Markdown' },
-    { value: 'pdf', label: 'PDF (Placeholder Content)' },
+    { value: 'pdf', label: 'PDF' },
   ];
 
   const handleDownloadAllAsZip = async () => {
@@ -357,7 +356,7 @@ const ViewDocs = () => {
                     onClick={() => handleDownloadZipForProject(project.id)}
                     disabled={mockDocumentFiles.filter(doc => doc.projectId === project.id).length === 0}
                     variant="outline"
-                    className="w-full"
+                    className="flex-1"
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Download All as ZIP
@@ -367,8 +366,8 @@ const ViewDocs = () => {
                     value={selectedZipFormat}
                     onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}
                   >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select format" />
+                    <SelectTrigger className="w-[100px] flex-shrink-0">
+                      <SelectValue placeholder="Format" />
                     </SelectTrigger>
                     <SelectContent>
                       {zipFormatOptions.map(option => (
@@ -399,52 +398,76 @@ const ViewDocs = () => {
           <p className="text-gray-600">Browse and download documentation for {activeProjectName}.</p>
         </div>
 
-        <ResizablePanelGroup
-          direction="horizontal"
-          className="min-h-[calc(100vh-12rem)] rounded-lg border"
-          key={activeProjectId ? (selectedDocId ? 'doc-selected' : 'doc-not-selected') : 'no-project'} // Force re-render on selection change for panel size
-        >
-          <ResizablePanel defaultSize={selectedDocId ? 33 : 100}>
-            <div className="p-6 space-y-6 h-full"> {/* Ensure div takes full height for scroll area */}
+        <div className="flex min-h-[calc(100vh-12rem)] rounded-lg border transition-all duration-300">
+          <div className={`${selectedDocId ? 'w-80' : 'w-full'} transition-all duration-300 border-r`}>
+            <div className={`${selectedDocId ? 'p-3' : 'p-6'} space-y-6 h-full transition-all duration-300`}>
               <Card className="flex flex-col h-full"> {/* Ensure card takes full height */}
-                <CardHeader>
-                  <CardTitle>Documents</CardTitle>
-                  <div className="mt-4">
-                    <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground -translate-y-1/2" />
-                        <Input
-                            type="search"
-                            placeholder="Filter documents by name..."
-                            value={documentFilterTerm}
-                            onChange={(e) => setDocumentFilterTerm(e.target.value)}
-                            className="w-full rounded-lg bg-background pl-8"
-                        />
-                    </div>
+                <CardHeader className={selectedDocId ? 'p-3' : 'p-6'}>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className={selectedDocId ? 'text-lg' : 'text-xl'}>Documents</CardTitle>
+                    {selectedDocId && (
+                      <div className="flex items-center space-x-1">
+                        <Button
+                          onClick={handleDownloadAllAsZip}
+                          disabled={filteredDocumentsForActiveProject.length === 0}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <Download className="w-3 h-3" />
+                        </Button>
+                        <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
+                          <SelectTrigger className="w-26 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {zipFormatOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
-                   <div className="flex items-center space-x-2 mt-4">
-                    <Button
-                      onClick={handleDownloadAllAsZip}
-                      disabled={filteredDocumentsForActiveProject.length === 0} // Simplified disabled logic
-                      className="flex-grow"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download All as ZIP
-                    </Button>
-                    <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Select format" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {zipFormatOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {!selectedDocId && (
+                    <>
+                      <div className="mt-4">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground -translate-y-1/2" />
+                            <Input
+                                type="search"
+                                placeholder="Filter documents by name..."
+                                value={documentFilterTerm}
+                                onChange={(e) => setDocumentFilterTerm(e.target.value)}
+                                className="w-full rounded-lg bg-background pl-8"
+                            />
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 mt-4">
+                        <Button
+                          onClick={handleDownloadAllAsZip}
+                          disabled={filteredDocumentsForActiveProject.length === 0}
+                          className="flex-grow"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download All as ZIP
+                        </Button>
+                        <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
+                          <SelectTrigger className="w-[120px] flex-shrink-0">
+                            <SelectValue placeholder="Format" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {zipFormatOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                 </CardHeader>
                 <CardContent className="flex-grow overflow-hidden"> {/* Allow content to grow and scroll */}
                   <ScrollArea className="h-full"> {/* ScrollArea takes full height of CardContent */}
-                    <div className="space-y-3 pr-4">
+                    <div className="space-y-2 pr-4">
                       {filteredDocumentsForActiveProject.length === 0 && (
                         <p className="text-sm text-gray-500 text-center py-10">
                           {documentFilterTerm
@@ -453,115 +476,98 @@ const ViewDocs = () => {
                         </p>
                       )}
                       {filteredDocumentsForActiveProject.map((doc) => (
-                        <Card
+                        <div
                           key={doc.id}
-                          className={`cursor-pointer transition-all duration-200 ${
+                          className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
                             selectedDocId === doc.id
                               ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                           }`}
                           onClick={() => setSelectedDocId(doc.id)}
                         >
-                          <CardHeader className="p-4">
-                            <div className="flex items-start space-x-3">
-                              <div className="p-1 bg-blue-100 rounded mt-1">
-                                <FileText className="w-4 h-4 text-blue-600" />
+                          <div className="flex items-center space-x-3">
+                            <div className="p-1 bg-blue-100 rounded flex-shrink-0">
+                              <FileText className="w-3 h-3 text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{doc.name}</div>
+                              <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                                <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs">{doc.version}</span>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <CardTitle className="text-sm font-medium truncate">{doc.name}</CardTitle>
-                              </div>
-                              <Popover>
-                                <PopoverTrigger asChild>
+                            </div>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 flex-shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Download className="w-3 h-3" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-2 space-y-1">
+                                {downloadFormats.map(df => (
                                   <Button
+                                    key={df.key}
                                     variant="ghost"
-                                    size="icon"
-                                    className="ml-auto flex-shrink-0" // Position to the right
-                                    onClick={(e) => e.stopPropagation()} // Prevent card click
+                                    size="sm"
+                                    className="w-full justify-start"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDownload(doc, df.key, df.mimeType);
+                                    }}
                                   >
-                                    <Download className="w-4 h-4" />
+                                    <span className="mr-2 text-xs">{df.icon}</span> Download as {df.format}
                                   </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-2 space-y-1">
-                                  {downloadFormats.map(df => (
-                                    <Button
-                                      key={df.key}
-                                      variant="ghost"
-                                      size="sm"
-                                      className="w-full justify-start"
-                                      onClick={(e) => {
-                                        e.stopPropagation(); // Prevent card click just in case
-                                        handleDownload(doc, df.key, df.mimeType);
-                                        // Optionally close popover here if not closing automatically
-                                      }}
-                                    >
-                                      <span className="mr-2 text-xs">{df.icon}</span> Download as {df.format}
-                                    </Button>
-                                  ))}
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="p-4 pt-0">
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                              <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
-                              <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full">{doc.version}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
+                                ))}
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </ScrollArea>
                 </CardContent>
               </Card>
-              {/* Old Download Options card REMOVED from here */}
-            </div> {/* End of first panel's content div */}
-          </ResizablePanel>
+            </div>
+          </div>
 
-          {/* Conditionally render handle and viewer panel */}
+          {/* Document viewer panel */}
           {selectedDocId && currentDocumentToDisplay && (
-            <>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={67}>
-                <div className="p-6 h-full">
-                  <Card className="h-full flex flex-col">
-                    {/* This inner content is already conditional on currentDocumentToDisplay by its nature */}
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-xl">
-                          {currentDocumentToDisplay.name}
-                        </CardTitle>
-                        <div className="flex items-center space-x-2">
-                          <Button size="sm"> {/* Placeholder Regenerate button */}
-                            Regenerate
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setSelectedDocId(null)} aria-label="Close document viewer">
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
+            <div className="flex-1">
+              <div className="p-6 h-full">
+                <Card className="h-full flex flex-col">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl">
+                        {currentDocumentToDisplay.name}
+                      </CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <Button size="sm">
+                          Regenerate
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setSelectedDocId(null)} aria-label="Close document viewer">
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <CardDescription>
-                        Version: {currentDocumentToDisplay.version} |
-                        Created: {new Date(currentDocumentToDisplay.createdAt).toLocaleDateString()}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-grow prose max-w-none p-0">
-                      <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
-                        {currentDocumentToDisplay.content.md}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </ResizablePanel>
-            </>
+                    </div>
+                    <CardDescription>
+                      Version: {currentDocumentToDisplay.version} |
+                      Created: {new Date(currentDocumentToDisplay.createdAt).toLocaleDateString()}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow prose max-w-none p-0">
+                    <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
+                      {currentDocumentToDisplay.content.md}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           )}
-          {/* If no document is selected, the ResizablePanelGroup will only contain the first panel, which will take 100% width.
-              The placeholder logic (like "Select a document") would naturally fit inside the (now non-existent) right panel
-              or be implicitly understood by the lack of a selected item / viewer.
-              The existing placeholder for an empty *list* is in the left panel's ScrollArea.
-              If we want a specific message in the main area when no doc is selected, it has to be outside or instead of this panel group,
-              or the right panel must always exist. The current approach of not rendering the right panel is cleaner for 100% width goal.
-          */}
-        </ResizablePanelGroup>
+        </div>
       </div>
     );
   }
