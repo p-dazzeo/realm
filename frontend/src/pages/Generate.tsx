@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +28,8 @@ interface DocumentationSection {
 
 const Generate = () => {
   const [selectedProject, setSelectedProject] = useState('');
+  const [documentationStyle, setDocumentationStyle] = useState('');
+  const [detailLevel, setDetailLevel] = useState('');
   const [sections, setSections] = useState<DocumentationSection[]>([
     { id: '1', title: 'Project Overview', description: 'Provide a high-level overview of the project architecture and purpose' },
     { id: '2', title: 'Setup Instructions', description: 'Include installation steps, dependencies, and configuration requirements' },
@@ -139,7 +140,7 @@ const Generate = () => {
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Documentation Style</Label>
-                <Select>
+                <Select value={documentationStyle} onValueChange={setDocumentationStyle}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select style..." />
                   </SelectTrigger>
@@ -153,7 +154,7 @@ const Generate = () => {
 
               <div className="space-y-2">
                 <Label>Detail Level</Label>
-                <Select>
+                <Select value={detailLevel} onValueChange={setDetailLevel}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select detail level..." />
                   </SelectTrigger>
