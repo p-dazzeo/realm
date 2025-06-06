@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, func
+from sqlalchemy.orm import noload
 from typing import Optional
 import structlog
 from datetime import datetime
 
 from core.dependencies import get_database
-from modules.upload.models import Project, UploadSession
+from modules.upload.models import Project, UploadSession, ProjectFile
 from modules.upload.schemas import (
     ProjectCreate, Project as ProjectSchema, UploadResponse, 
     UploadSession as UploadSessionSchema, ErrorResponse,
@@ -97,34 +98,38 @@ async def list_projects(
     db: AsyncSession = Depends(get_database)
 ):
     """List all projects with pagination and filtering"""
-    query = select(Project)
+    query = (
+        select(
+            Project,
+            func.count(ProjectFile.id).label("file_count")
+        )
+        .outerjoin(ProjectFile, Project.id == ProjectFile.project_id)
+    )
     
     if upload_method:
         query = query.where(Project.upload_method == upload_method.value)
     
-    query = query.offset(skip).limit(limit).order_by(Project.created_at.desc())
+    # Apply group_by before offset, limit, and order_by that refer to Project columns
+    query = query.group_by(Project.id) # Group by all necessary Project columns for DB compatibility
+                                     # For most ORM cases with PostgreSQL, Project.id is enough.
+
+    query = query.order_by(Project.created_at.desc()).offset(skip).limit(limit)
     
     result = await db.execute(query)
-    projects = result.scalars().all()
+    projects_and_counts = result.all() # list of Row objects, (Project_instance, count_value)
     
-    # Transform to ProjectSummary with file counts
     project_summaries = []
-    for project in projects:
-        # Count files for this project
-        file_count_result = await db.execute(
-            select(len(project.files))
-        )
-        
+    for project_obj, count_val in projects_and_counts:
         summary = ProjectSummary(
-            id=project.id,
-            uuid=project.uuid,
-            name=project.name,
-            description=project.description,
-            upload_method=UploadMethod(project.upload_method),
-            upload_status=project.upload_status,
-            file_count=len(project.files),
-            total_size=project.file_size or 0,
-            created_at=project.created_at
+            id=project_obj.id,
+            uuid=project_obj.uuid,
+            name=project_obj.name,
+            description=project_obj.description,
+            upload_method=UploadMethod(project_obj.upload_method),
+            upload_status=project_obj.upload_status,
+            file_count=count_val, # Use the aggregated count
+            total_size=project_obj.file_size or 0,
+            created_at=project_obj.created_at
         )
         project_summaries.append(summary)
     
@@ -139,17 +144,15 @@ async def get_project(
 ):
     """Get a specific project with optional file content"""
     query = select(Project).where(Project.id == project_id)
+
+    if not include_files:
+        query = query.options(noload(Project.files))
     
     result = await db.execute(query)
     project = result.scalar_one_or_none()
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
-    # If files are not requested, load project without files
-    if not include_files:
-        # Clear the files relationship to avoid loading
-        project.files = []
     
     return project
 
