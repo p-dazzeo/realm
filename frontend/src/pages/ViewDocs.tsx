@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, ArrowLeft, Search } from 'lucide-react'; // Added Search Icon
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input"; // Import Input component
 
 interface Project {
   id: string;
@@ -33,6 +34,7 @@ const mockProjects: Project[] = [
 ];
 
 const mockDocumentFiles: DocumentFile[] = [
+  // ... (mockDocumentFiles data remains the same as provided previously) ...
   // Project Apollo Strong Documents
   {
     id: 'doc_apollo_arch',
@@ -158,46 +160,56 @@ const mockDocumentFiles: DocumentFile[] = [
   }
 ];
 
-
 const ViewDocs = () => {
+  const [currentView, setCurrentView] = useState<string>('projectList'); // 'projectList' or 'documentList'
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // Used when currentView is 'documentList'
+
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [selectedZipFormat, setSelectedZipFormat] = useState<keyof DocumentFile['content']>('md');
-  
-  const documents = mockDocumentFiles; // Use the new detailed mock data
+  const [documentFilterTerm, setDocumentFilterTerm] = useState<string>('');
+
+  const documents = mockDocumentFiles;
   const projects = mockProjects;
 
-  const projectOptions = [
-    { value: 'all', label: 'All Projects' },
-    ...projects.map(proj => ({
-      value: proj.id,
-      label: proj.name
-    }))
-  ];
+  // For 'documentList' view, documents are filtered by activeProjectId
+  const filteredDocumentsForActiveProject = useMemo(() => {
+    if (!activeProjectId) return [];
+    let projectDocs = documents.filter(doc => doc.projectId === activeProjectId);
 
-  const filteredDocuments = useMemo(() => {
-    return documents.filter(doc => {
-      if (selectedProjectId === 'all') return true;
-      return doc.projectId === selectedProjectId;
-    });
-  }, [documents, selectedProjectId]);
-
-  useEffect(() => {
-    if (selectedDocId && !filteredDocuments.find(doc => doc.id === selectedDocId)) {
-      setSelectedDocId(null); // Reset if selected doc is not in the filtered list
+    if (documentFilterTerm) {
+      projectDocs = projectDocs.filter(doc =>
+        doc.name.toLowerCase().includes(documentFilterTerm.toLowerCase())
+      );
     }
-  }, [selectedProjectId, selectedDocId, filteredDocuments]);
+    return projectDocs;
+  }, [documents, activeProjectId, documentFilterTerm]);
 
-  // Automatically select the first document in the filtered list if none is selected
-  // and the list is not empty.
+  // Reset selectedDocId if activeProjectId changes, filter term changes, or if the doc is not in the new list
   useEffect(() => {
-    if (!selectedDocId && filteredDocuments.length > 0) {
-      setSelectedDocId(filteredDocuments[0].id);
+    if (activeProjectId) {
+      // filteredDocumentsForActiveProject already incorporates the filter term
+      if (selectedDocId && !filteredDocumentsForActiveProject.find(doc => doc.id === selectedDocId)) {
+          setSelectedDocId(null);
+      }
+    } else {
+        setSelectedDocId(null);
     }
-  }, [filteredDocuments, selectedDocId]);
+  }, [activeProjectId, selectedDocId, filteredDocumentsForActiveProject]);
+
+  // Auto-select first document in 'documentList' view based on current filters
+  useEffect(() => {
+    if (currentView === 'documentList' && activeProjectId) {
+      if (filteredDocumentsForActiveProject.length > 0 && !selectedDocId) {
+        setSelectedDocId(filteredDocumentsForActiveProject[0].id);
+      } else if (filteredDocumentsForActiveProject.length === 0) {
+        setSelectedDocId(null);
+      }
+    }
+  }, [currentView, activeProjectId, documents, selectedDocId]);
 
 
-  const currentDocument = useMemo(() => {
+  const currentDocumentToDisplay = useMemo(() => {
+    if (!selectedDocId) return null;
     return documents.find(doc => doc.id === selectedDocId);
   }, [documents, selectedDocId]);
 
@@ -219,33 +231,30 @@ const ViewDocs = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    console.log(`Downloading ${doc.name} as ${formatKey.toUpperCase()}`);
   };
 
   const zipFormatOptions: { value: keyof DocumentFile['content']; label: string }[] = [
     { value: 'txt', label: 'TXT' },
     { value: 'md', label: 'Markdown' },
-    { value: 'pdf', label: 'PDF (Placeholder Content)' }, // Clarify PDF content is placeholder
+    { value: 'pdf', label: 'PDF (Placeholder Content)' },
   ];
 
   const handleDownloadAllAsZip = async () => {
-    if (selectedProjectId === 'all' || filteredDocuments.length === 0) {
-      console.warn("Download All as ZIP called when it should be disabled.");
-      // Optionally, show a user-facing message here
+    if (!activeProjectId || filteredDocumentsForActiveProject.length === 0) {
+      console.warn("Download All as ZIP called under invalid conditions.");
       return;
     }
 
-    const currentProject = projects.find(p => p.id === selectedProjectId);
-    if (!currentProject) {
-      console.error("Selected project not found, cannot create ZIP.");
-      // Optionally, show a user-facing error message
+    const currentProjectDetails = projects.find(p => p.id === activeProjectId);
+    if (!currentProjectDetails) {
+      console.error("Active project details not found for ZIP.");
       return;
     }
 
     const zip = new JSZip();
-    const projectName = currentProject.name.replace(/\s+/g, '_');
+    const projectName = currentProjectDetails.name.replace(/\s+/g, '_');
 
-    filteredDocuments.forEach(doc => {
+    filteredDocumentsForActiveProject.forEach(doc => {
       const content = doc.content[selectedZipFormat];
       const filename = `${doc.name.replace(/\s+/g, '_')}_${doc.version}.${selectedZipFormat}`;
       zip.file(filename, content);
@@ -257,46 +266,100 @@ const ViewDocs = () => {
       saveAs(zipBlob, zipFilename);
     } catch (error) {
       console.error("Failed to generate or download ZIP file:", error);
+    }
+  };
+
+  // New function to handle ZIP download from project card
+  const handleDownloadZipForProject = async (projectId: string) => {
+    const projectDetails = projects.find(p => p.id === projectId);
+    if (!projectDetails) {
+      console.error("Project details not found for ZIP download:", projectId);
+      // Optionally, show a user-facing error message
+      return;
+    }
+
+    const documentsForProject = documents.filter(doc => doc.projectId === projectId);
+    if (documentsForProject.length === 0) {
+      console.warn("No documents found for project:", projectId);
+      // Optionally, show a user-facing message (e.g., toast)
+      return;
+    }
+
+    const zip = new JSZip();
+    const projectName = projectDetails.name.replace(/\s+/g, '_');
+
+    documentsForProject.forEach(doc => {
+      const content = doc.content[selectedZipFormat]; // Uses page-level selectedZipFormat
+      const filename = `${doc.name.replace(/\s+/g, '_')}_${doc.version}.${selectedZipFormat}`;
+      zip.file(filename, content);
+    });
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipFilename = `${projectName}_documentation_${selectedZipFormat}.zip`; // Add format to zip name
+      saveAs(zipBlob, zipFilename);
+    } catch (error) {
+      console.error("Failed to generate or download ZIP file for project:", projectId, error);
       // Optionally, show a user-facing error message
     }
   };
 
-  return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">View Documentation</h1>
-        <p className="text-gray-600">Browse and download your generated documentation</p>
-      </div>
+  const navigateToDocumentView = (projectId: string) => {
+    setActiveProjectId(projectId);
+    setCurrentView('documentList');
+    setSelectedDocId(null);
+    setDocumentFilterTerm(''); // Reset filter when navigating to a new project's docs
+  };
 
-      <ResizablePanelGroup direction="horizontal" className="min-h-[calc(100vh-10rem)] rounded-lg border">
-        <ResizablePanel defaultSize={33}>
-          <div className="p-6 space-y-6">
-            <Card>
+  const navigateToProjectListView = () => {
+    setCurrentView('projectList');
+    setActiveProjectId(null);
+    setSelectedDocId(null);
+    setDocumentFilterTerm(''); // Reset filter when going back to project list
+  };
+
+  const activeProjectName = useMemo(() => {
+    return projects.find(p => p.id === activeProjectId)?.name || "Selected Project";
+  }, [projects, activeProjectId]);
+
+
+  // Main Render Logic
+  if (currentView === 'projectList') {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
+          <p className="text-gray-600">Select a project to view its documentation.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {mockProjects.map(project => (
+            <Card key={project.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="flex justify-between items-center mb-4">
-                  <CardTitle>Generated Documentation</CardTitle>
-                  <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projectOptions.map(option => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-2 mt-4">
+                <CardTitle>{project.name}</CardTitle>
+                <CardDescription>
+                  {mockDocumentFiles.filter(doc => doc.projectId === project.id).length} documents
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={() => navigateToDocumentView(project.id)} className="w-full">
+                  View Documentation Files
+                </Button>
+                <div className="flex items-center space-x-2">
                   <Button
-                    onClick={handleDownloadAllAsZip}
-                    disabled={selectedProjectId === 'all' || filteredDocuments.length === 0}
-                    className="flex-grow"
+                    onClick={() => handleDownloadZipForProject(project.id)}
+                    disabled={mockDocumentFiles.filter(doc => doc.projectId === project.id).length === 0}
+                    variant="outline"
+                    className="w-full"
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Download All as ZIP
                   </Button>
-                  <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
-                    <SelectTrigger className="w-[150px]">
+                  {/* This Select uses the page-level selectedZipFormat state */}
+                  <Select
+                    value={selectedZipFormat}
+                    onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}
+                  >
+                    <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select format" />
                     </SelectTrigger>
                     <SelectContent>
@@ -306,14 +369,80 @@ const ViewDocs = () => {
                     </SelectContent>
                   </Select>
                 </div>
-              </CardHeader>
-              <CardContent>
-                {/* Adjusted height to account for new elements in header, approx 40px for button row + margin */}
-                <ScrollArea className="h-[calc(100vh-32rem-3rem)]">
-                  <div className="space-y-3 pr-4">
-                    {filteredDocuments.map((doc) => {
-                      const project = projects.find(p => p.id === doc.projectId);
-                      return (
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'documentList' && activeProjectId) {
+    // This is the existing UI, adapted for the new view structure
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="mb-8">
+            <Button onClick={navigateToProjectListView} variant="outline" className="mb-4">
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Projects
+            </Button>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {activeProjectName} - Documentation
+          </h1>
+          <p className="text-gray-600">Browse and download documentation for {activeProjectName}.</p>
+        </div>
+
+        <ResizablePanelGroup direction="horizontal" className="min-h-[calc(100vh-12rem)] rounded-lg border">
+          <ResizablePanel defaultSize={33}>
+            <div className="p-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Documents</CardTitle>
+                  <div className="mt-4">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground -translate-y-1/2" />
+                        <Input
+                            type="search"
+                            placeholder="Filter documents by name..."
+                            value={documentFilterTerm}
+                            onChange={(e) => setDocumentFilterTerm(e.target.value)}
+                            className="w-full rounded-lg bg-background pl-8"
+                        />
+                    </div>
+                  </div>
+                   <div className="flex items-center space-x-2 mt-4">
+                    <Button
+                      onClick={handleDownloadAllAsZip}
+                      disabled={filteredDocumentsForActiveProject.length === 0} // Simplified disabled logic
+                      className="flex-grow"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download All as ZIP
+                    </Button>
+                    <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Select format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {zipFormatOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Adjusted height to account for new elements in header, similar to previous adjustment */}
+                  {/* Adjusted height: consider input field (approx 2.5rem + margin 1rem = 3.5rem) */}
+                  <ScrollArea className="h-[calc(100vh-32rem-3rem-3.5rem)]">
+                    <div className="space-y-3 pr-4">
+                      {filteredDocumentsForActiveProject.length === 0 && (
+                        <p className="text-sm text-gray-500">
+                          {documentFilterTerm
+                            ? "No documents match your filter."
+                            : "No documents found for this project."}
+                        </p>
+                      )}
+                      {filteredDocumentsForActiveProject.map((doc) => (
                         <Card
                           key={doc.id}
                           className={`cursor-pointer transition-all duration-200 ${
@@ -330,7 +459,7 @@ const ViewDocs = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <CardTitle className="text-sm font-medium truncate">{doc.name}</CardTitle>
-                                <CardDescription className="text-xs mt-1">{project?.name || 'Unknown Project'}</CardDescription>
+                                {/* Project name in CardDescription is redundant here as we are in a project-specific view */}
                               </div>
                             </div>
                           </CardHeader>
@@ -341,84 +470,91 @@ const ViewDocs = () => {
                             </div>
                           </CardContent>
                         </Card>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
 
-          {currentDocument && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Download Options</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                {downloadFormats.map((format) => (
-                  <Button
-                    key={format.format}
-                    variant="outline"
-                    className="w-full justify-between"
-                    onClick={() => handleDownload(currentDocument, format.key, format.mimeType)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="text-lg">{format.icon}</span>
-                      <span className="font-medium text-gray-900">{format.format}</span>
-                    </div>
-                    <Download className="w-4 h-4 text-gray-400" />
-                  </Button>
-                ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          </div>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={67}>
-          <div className="p-6 h-full">
-            <Card className="h-full flex flex-col">
-              {currentDocument ? (
-                <>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl">
-                        {currentDocument.name}
-                      </CardTitle>
-                      <Button size="sm">
-                        Regenerate
-                      </Button>
-                    </div>
-                    <CardDescription>
-                      Project: {projects.find(p => p.id === currentDocument.projectId)?.name || 'Unknown'} |
-                      Version: {currentDocument.version} |
-                      Created: {new Date(currentDocument.createdAt).toLocaleDateString()}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-grow prose max-w-none p-0">
-                    {/* Displaying MD content by default. Could add a selector for TXT/PDF later */}
-                    <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
-                      {currentDocument.content.md}
-                    </div>
-                  </CardContent>
-                </>
-              ) : (
-                <CardContent className="flex flex-col items-center justify-center h-full">
-                  <div className="text-center">
-                    <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Select Documentation</h3>
-                    <p className="text-gray-500">Choose a document from the list to view its content, or select a project to filter the list.</p>
-                    {filteredDocuments.length === 0 && selectedProjectId !== 'all' && (
-                        <p className="text-sm text-red-500 mt-2">No documents found for the selected project.</p>
-                    )}
+            {currentDocumentToDisplay && ( // Ensure currentDocumentToDisplay is not null
+              <Card>
+                <CardHeader>
+                  <CardTitle>Download Options</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                  {downloadFormats.map((format) => (
+                    <Button
+                      key={format.format}
+                      variant="outline"
+                      className="w-full justify-between"
+                      onClick={() => handleDownload(currentDocumentToDisplay, format.key, format.mimeType)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="text-lg">{format.icon}</span>
+                        <span className="font-medium text-gray-900">{format.format}</span>
+                      </div>
+                      <Download className="w-4 h-4 text-gray-400" />
+                    </Button>
+                  ))}
                   </div>
                 </CardContent>
-              )}
-            </Card>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+              </Card>
+            )}
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={67}>
+            <div className="p-6 h-full">
+              <Card className="h-full flex flex-col">
+                {currentDocumentToDisplay ? (
+                  <>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-xl">
+                          {currentDocumentToDisplay.name}
+                        </CardTitle>
+                        <Button size="sm"> {/* Placeholder Regenerate button */}
+                          Regenerate
+                        </Button>
+                      </div>
+                      <CardDescription>
+                        Version: {currentDocumentToDisplay.version} |
+                        Created: {new Date(currentDocumentToDisplay.createdAt).toLocaleDateString()}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-grow prose max-w-none p-0">
+                      <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
+                        {currentDocumentToDisplay.content.md}
+                      </div>
+                    </CardContent>
+                  </>
+                ) : (
+                  <CardContent className="flex flex-col items-center justify-center h-full">
+                    <div className="text-center">
+                      <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Document</h3>
+                      <p className="text-gray-500">
+                        {filteredDocumentsForActiveProject.length > 0
+                            ? "Choose a document from the list to view its content."
+                            : "No documents available in this project."}
+                      </p>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+    );
+  }
+
+  // Fallback or loading state if currentView is not 'projectList' and activeProjectId is null for 'documentList'
+  return (
+    <div className="max-w-6xl mx-auto p-6 text-center">
+        <p>Loading or invalid state...</p>
+        <Button onClick={navigateToProjectListView}>Go to Project List</Button>
     </div>
   );
 };
