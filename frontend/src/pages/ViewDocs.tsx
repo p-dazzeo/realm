@@ -44,9 +44,6 @@ const ViewDocs = () => {
     if (selectedDoc && !filteredDocuments.find(doc => doc.id === selectedDoc)) {
       setSelectedDoc('');
     }
-  // IMPORTANT: Added `filteredDocuments` to dependency array, as it's now memoized.
-  // However, the original code already had it, which is correct.
-  // The primary change is useMemo for filteredDocuments calculation.
   }, [selectedProject, selectedDoc, filteredDocuments]);
 
   const sampleDocContent = `# Legacy Banking System Documentation
@@ -110,7 +107,6 @@ Generates financial reports and statements for regulatory compliance.`;
                   </Select>
                 </div>
               </CardHeader>
-              {/*
               <CardContent>
                 <ScrollArea className="h-[calc(100vh-32rem)]">
                   <div className="space-y-3 pr-4">
@@ -146,10 +142,8 @@ Generates financial reports and statements for regulatory compliance.`;
                   </div>
                 </ScrollArea>
               </CardContent>
-              */}
             </Card>
 
-          {/*
           {selectedDoc && (
             <Card>
               <CardHeader>
@@ -174,7 +168,6 @@ Generates financial reports and statements for regulatory compliance.`;
               </CardContent>
             </Card>
           )}
-          */}
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle /> {/* This should be uncommented if the group is active */}
