@@ -20,9 +20,7 @@ class UploadSettings(BaseSettings):
     max_file_size: int = Field(default=50)
     max_project_size: int = Field(default=500)
     allowed_extensions: List[str] = Field(default=[
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".h",
-        ".hpp", ".cs", ".rb", ".go", ".rs", ".php", ".html", ".css",
-        ".sql", ".md", ".txt", ".json", ".xml", ".yaml", ".yml"
+        ".cbl", ".cob", ".cpy", ".jcl", ".CBL", ".CPY", ".JCL", ".COB"
     ])
     
     class Config:

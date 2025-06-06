@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from typing import Optional
 import structlog
 from datetime import datetime
@@ -160,6 +160,11 @@ async def delete_project(
     db: AsyncSession = Depends(get_database)
 ):
     """Delete a project and all its files"""
+    # First delete any upload sessions that reference this project
+    await db.execute(
+        delete(UploadSession).where(UploadSession.project_id == project_id)
+    )
+    
     result = await db.execute(
         select(Project).where(Project.id == project_id)
     )

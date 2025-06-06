@@ -1,23 +1,19 @@
-import asyncio
 import hashlib
 import httpx
-import mimetypes
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from fastapi import UploadFile, HTTPException
 import structlog
-import aiofiles
 import zipfile
 import tempfile
 
 from core.config import upload_settings
 from modules.upload.models import Project, ProjectFile, UploadSession
 from modules.upload.schemas import (
-    ProjectCreate, FileUploadRequest, ProjectUploadRequest,
+    ProjectCreate,
     ParserRequest, ParserResponse, UploadMethod, UploadStatus, SessionStatus
 )
 
@@ -149,58 +145,90 @@ class UploadService:
             ext = Path(file_data['filename']).suffix.lower()
             if ext in upload_settings.allowed_extensions or not ext:
                 filtered_files.append(file_data)
+                logger.info("File passed extension filter", 
+                          filename=file_data['filename'], 
+                          extension=ext, 
+                          size=file_data.get('size', 0))
             else:
-                logger.debug("Skipping file with disallowed extension", filename=file_data['filename'])
-        
-        logger.info("Files extracted", total=len(files), filtered=len(filtered_files))
+                logger.warning("Skipping file with disallowed extension", 
+                             filename=file_data['filename'], 
+                             extension=ext,
+                             allowed_extensions=upload_settings.allowed_extensions)
+
+        logger.info("File extraction summary", 
+                   total_extracted=len(files), 
+                   passed_filter=len(filtered_files),
+                   skipped_by_filter=len(files) - len(filtered_files))
         return filtered_files
     
     async def _extract_archive(self, uploaded_file: UploadFile) -> List[Dict[str, Any]]:
         """Extract files from archive"""
         files = []
+        temp_file_path = None
         
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            content = await uploaded_file.read()
-            temp_file.write(content)
-            temp_file.flush()
+        try:
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file_path = temp_file.name
+                content = await uploaded_file.read()
+                temp_file.write(content)
+                temp_file.flush()
             
+            zip_ref = None
             try:
-                with zipfile.ZipFile(temp_file.name, 'r') as zip_ref:
-                    for file_info in zip_ref.infolist():
-                        if file_info.is_dir():
-                            continue
-                            
-                        # Skip hidden files and common non-code files
-                        filename = file_info.filename
-                        if self._should_skip_file(filename):
-                            continue
+                zip_ref = zipfile.ZipFile(temp_file_path, 'r')
+                
+                for file_info in zip_ref.infolist():
+                    if file_info.is_dir():
+                        continue
                         
-                        try:
-                            with zip_ref.open(file_info) as file_content:
-                                content = file_content.read()
-                                
-                                # Check if binary
-                                try:
-                                    text_content = content.decode('utf-8')
-                                    is_binary = False
-                                except UnicodeDecodeError:
-                                    text_content = content.decode('utf-8', errors='ignore')
-                                    is_binary = True
-                                
-                                files.append({
-                                    'filename': Path(filename).name,
-                                    'relative_path': filename,
-                                    'content': text_content,
-                                    'size': file_info.file_size,
-                                    'is_binary': is_binary
-                                })
-                                
-                        except Exception as e:
-                            logger.warning("Failed to extract file", filename=filename, error=str(e))
-                            continue
+                    # Skip hidden files and common non-code files
+                    filename = file_info.filename
+                    if self._should_skip_file(filename):
+                        logger.info("Skipping file due to skip patterns", 
+                                  filename=filename, reason="matches skip pattern")
+                        continue
+                    
+                    try:
+                        with zip_ref.open(file_info) as file_content:
+                            content = file_content.read()
                             
+                            # Check if binary
+                            try:
+                                text_content = content.decode('utf-8')
+                                is_binary = False
+                            except UnicodeDecodeError:
+                                text_content = content.decode('utf-8', errors='ignore')
+                                is_binary = True
+                            
+                            files.append({
+                                'filename': Path(filename).name,
+                                'relative_path': filename,
+                                'content': text_content,
+                                'size': file_info.file_size,
+                                'is_binary': is_binary
+                            })
+                            
+                            logger.info("Extracted file from ZIP", 
+                                      filename=Path(filename).name,
+                                      relative_path=filename,
+                                      size=file_info.file_size,
+                                      is_binary=is_binary)
+                            
+                    except Exception as e:
+                        logger.warning("Failed to extract file", filename=filename, error=str(e))
+                        continue
+                        
             finally:
-                os.unlink(temp_file.name)
+                if zip_ref:
+                    zip_ref.close()
+                    
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except (OSError, PermissionError) as e:
+                    logger.warning("Could not delete temporary file", 
+                                 filename=temp_file_path, error=str(e))
         
         return files
     
@@ -214,9 +242,16 @@ class UploadService:
         
         for pattern in skip_patterns:
             if pattern in filename:
+                logger.info("File skipped due to pattern match", 
+                          filename=filename, 
+                          matched_pattern=pattern)
                 return True
         
-        return filename.startswith('.')
+        if filename.startswith('.'):
+            logger.info("File skipped - hidden file", filename=filename)
+            return True
+            
+        return False
     
     async def _upload_via_parser(
         self,
@@ -310,8 +345,18 @@ class UploadService:
         
         for file_data in files:
             try:
+                logger.info("Processing file for database storage", 
+                          filename=file_data['filename'],
+                          relative_path=file_data['relative_path'],
+                          size=file_data.get('size', 0))
+                
                 await self._create_project_file_direct(db, project, file_data)
                 processed_count += 1
+                
+                logger.info("File successfully stored in database", 
+                          filename=file_data['filename'],
+                          project_id=project.id,
+                          processed_count=processed_count)
                 
                 # Update session progress
                 session.processed_files = processed_count
@@ -322,24 +367,46 @@ class UploadService:
                 failed_count += 1
                 session.errors = session.errors or []
                 session.errors.append(f"Failed to process {file_data['filename']}: {str(e)}")
-                logger.warning("Failed to process file", filename=file_data['filename'], error=str(e))
+                logger.error("Failed to store file in database", 
+                           filename=file_data['filename'], 
+                           error=str(e),
+                           project_id=project.id)
         
-        # Update final status
+                # Update final status
         session.project_id = project.id
         session.failed_files = failed_count
         
         if failed_count == 0:
             session.status = SessionStatus.COMPLETED
             project.upload_status = UploadStatus.COMPLETED
+            logger.info("Project upload completed successfully", 
+                       project_id=project.id,
+                       project_name=project.name,
+                       files_processed=processed_count,
+                       upload_method="direct")
         elif processed_count > 0:
             session.status = SessionStatus.COMPLETED
             project.upload_status = UploadStatus.COMPLETED
             session.warnings = [f"{failed_count} files failed to process"]
+            logger.warning("Project upload completed with some failures", 
+                         project_id=project.id,
+                         project_name=project.name,
+                         files_processed=processed_count,
+                         files_failed=failed_count,
+                         upload_method="direct")
         else:
             session.status = SessionStatus.FAILED
             project.upload_status = UploadStatus.FAILED
-        
+            logger.error("Project upload failed - no files processed", 
+                       project_id=project.id,
+                       project_name=project.name,
+                       files_failed=failed_count,
+                       upload_method="direct")
+
         await db.commit()
+        logger.info("Database commit completed", 
+                   project_id=project.id,
+                   session_id=session.session_id)
         return project
     
     async def _create_project_files_from_parser(
@@ -350,8 +417,7 @@ class UploadService:
         original_files: List[Dict[str, Any]]
     ):
         """Create ProjectFile records from parser response"""
-        # This depends on the parser response format
-        # For now, we'll create a basic implementation
+
         for file_data in original_files:
             project_file = ProjectFile(
                 project_id=project.id,
@@ -377,51 +443,47 @@ class UploadService:
     ):
         """Create a ProjectFile record for direct upload"""
         content = file_data['content']
+        detected_language = self._detect_language(file_data['filename'])
+        file_extension = Path(file_data['filename']).suffix
+        lines_of_code = len(content.split('\n')) if not file_data.get('is_binary') else 0
+        
+        logger.info("Creating ProjectFile record", 
+                  filename=file_data['filename'],
+                  language=detected_language,
+                  extension=file_extension,
+                  size=file_data.get('size', len(content.encode())),
+                  lines_of_code=lines_of_code,
+                  is_binary=file_data.get('is_binary', False))
         
         project_file = ProjectFile(
             project_id=project.id,
             filename=file_data['filename'],
             file_path=file_data['relative_path'],
             relative_path=file_data['relative_path'],
-            file_extension=Path(file_data['filename']).suffix,
+            file_extension=file_extension,
             file_size=file_data.get('size', len(content.encode())),
             content=content,
             content_hash=hashlib.sha256(content.encode()).hexdigest(),
-            language=self._detect_language(file_data['filename']),
+            language=detected_language,
             is_binary=file_data.get('is_binary', False),
-            loc=len(content.split('\n')) if not file_data.get('is_binary') else 0
+            loc=lines_of_code
         )
         
         db.add(project_file)
+        logger.debug("ProjectFile record added to database session", 
+                   filename=file_data['filename'],
+                   project_id=project.id)
     
     def _detect_language(self, filename: str) -> Optional[str]:
         """Simple language detection based on file extension"""
         ext_to_lang = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.ts': 'typescript',
-            '.jsx': 'javascript',
-            '.tsx': 'typescript',
-            '.java': 'java',
-            '.cpp': 'cpp',
-            '.c': 'c',
-            '.h': 'c',
-            '.hpp': 'cpp',
-            '.cs': 'csharp',
-            '.rb': 'ruby',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.php': 'php',
-            '.html': 'html',
-            '.css': 'css',
-            '.scss': 'scss',
-            '.sass': 'sass',
-            '.sql': 'sql',
-            '.md': 'markdown',
-            '.json': 'json',
-            '.xml': 'xml',
-            '.yaml': 'yaml',
-            '.yml': 'yaml'
+            '.cbl': 'cobol',
+            '.cob': 'cobol',
+            '.CBL': 'cobol',
+            '.cpy': 'cobol',
+            '.CPY': 'cobol',
+            '.jcl': 'jcl',
+            '.JCL': 'jcl'
         }
         
         ext = Path(filename).suffix.lower()

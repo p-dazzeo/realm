@@ -11,6 +11,16 @@ from modules.upload.service import upload_service
 
 
 # Configure structured logging
+import logging
+import sys
+
+# Configure standard library logging first
+logging.basicConfig(
+    format="%(message)s",
+    stream=sys.stdout,
+    level=logging.INFO,
+)
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -21,7 +31,8 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        # Use ConsoleRenderer for better terminal output instead of JSONRenderer
+        structlog.dev.ConsoleRenderer(colors=True)
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
