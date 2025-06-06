@@ -88,7 +88,7 @@ async def get_project_template(
 ):
     """Get a specific project template by ID."""
     try:
-        template = await db.get(ProjectTemplate, template_id)
+        template = await projects_service.get_template(db, template_id)
         if not template:
             raise HTTPException(status_code=404, detail="Template not found")
         return template

@@ -108,6 +108,15 @@ class ProjectsService:
             self.logger.error(f"Error fetching templates: {str(e)}")
             raise
     
+    async def get_template(self, db: AsyncSession, template_id: int) -> Optional[ProjectTemplate]:
+        """Get a specific template by ID."""
+        try:
+            template = await db.get(ProjectTemplate, template_id)
+            return template
+        except Exception as e:
+            self.logger.error(f"Error fetching template: {str(e)}")
+            raise
+    
     async def use_template(self, db: AsyncSession, template_id: int) -> ProjectTemplate:
         """Increment template usage count."""
         try:

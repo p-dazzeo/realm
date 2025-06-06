@@ -17,6 +17,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "python-dotenv>=1.0.1",
     "structlog>=24.1.0",
+    "aiosqlite>=0.21.0",
 ]
 
 [build-system]
