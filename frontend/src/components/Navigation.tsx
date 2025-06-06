@@ -53,7 +53,7 @@ const Navigation = ({ isVisible }: NavigationProps) => {
       </ul>
 
       {/* User section at bottom */}
-      <div className="mt-auto pt-4 border-t border-slate-200">
+      <div className="mt-auto pt-4 border-t border-slate-700">
         <NavLink
           to="/dashboard"
           className={({ isActive }) =>
