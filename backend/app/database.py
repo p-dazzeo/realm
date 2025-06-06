@@ -3,6 +3,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import MetaData
 from app.config import settings
 import structlog
+from typing import AsyncGenerator
 
 logger = structlog.get_logger()
 
@@ -26,7 +27,7 @@ class Base(DeclarativeBase):
     metadata = MetaData()
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency to get database session"""
     async with async_session_maker() as session:
         try:
