@@ -1,147 +1,558 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Download, FileText, ArrowLeft, Search, X } from 'lucide-react'; // Added X and Search Icons
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input"; // Import Input component
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"; // Import Popover components
 
-import React, { useState } from 'react';
-import { Download, FileText } from 'lucide-react';
+interface Project {
+  id: string;
+  name: string;
+}
+
+interface DocumentFile {
+  id: string;
+  name: string;
+  projectId: string;
+  createdAt: string; // ISO date string
+  version: string;
+  content: {
+    txt: string;
+    md: string;
+    pdf: string; // Placeholder for PDF, actual PDF generation/display is complex
+  };
+}
+
+const mockProjects: Project[] = [
+  { id: 'proj_apollo_strong', name: 'Project Apollo Strong' },
+  { id: 'proj_nova_star', name: 'Project Nova Star' },
+  { id: 'proj_helios_prime', name: 'Project Helios Prime' },
+];
+
+const mockDocumentFiles: DocumentFile[] = [
+  // ... (mockDocumentFiles data remains the same as provided previously) ...
+  // Project Apollo Strong Documents
+  {
+    id: 'doc_apollo_arch',
+    name: 'Apollo Architecture Overview',
+    projectId: 'proj_apollo_strong',
+    createdAt: '2024-07-01T10:00:00Z',
+    version: 'v1.0.0',
+    content: {
+      txt: 'Apollo Architecture Overview - Plain Text\nThis document outlines the main architectural components of Project Apollo Strong.',
+      md: '# Apollo Architecture Overview\n\nThis document outlines the main architectural components of Project Apollo Strong.\n\n## Components\n- Microservice A\n- Microservice B\n- API Gateway',
+      pdf: 'This is a sample PDF content for Apollo Architecture Overview',
+    },
+  },
+  {
+    id: 'doc_apollo_api',
+    name: 'Apollo API Specification',
+    projectId: 'proj_apollo_strong',
+    createdAt: '2024-07-05T14:30:00Z',
+    version: 'v1.1.0',
+    content: {
+      txt: 'Apollo API Specification - Plain Text\nDetails all available API endpoints, request/response formats for Project Apollo Strong.',
+      md: '# Apollo API Specification\n\nDetails all available API endpoints, request/response formats for Project Apollo Strong.\n\n### Endpoints\n- `GET /users`\n- `POST /orders`',
+      pdf: 'This is a sample PDF content for Apollo API Specification',
+    },
+  },
+  {
+    id: 'doc_apollo_deploy',
+    name: 'Apollo Deployment Guide',
+    projectId: 'proj_apollo_strong',
+    createdAt: '2024-07-10T09:15:00Z',
+    version: 'v0.9.0',
+    content: {
+      txt: 'Apollo Deployment Guide - Plain Text\nStep-by-step instructions for deploying Project Apollo Strong.',
+      md: '# Apollo Deployment Guide\n\nStep-by-step instructions for deploying Project Apollo Strong.\n\n1. Clone repository\n2. Install dependencies\n3. Run build script',
+      pdf: 'This is a sample PDF content for Apollo Deployment Guide',
+    },
+  },
+  // Project Nova Star Documents
+  {
+    id: 'doc_nova_ux',
+    name: 'Nova UX Guidelines',
+    projectId: 'proj_nova_star',
+    createdAt: '2024-06-15T11:00:00Z',
+    version: 'v2.0.1',
+    content: {
+      txt: 'Nova UX Guidelines - Plain Text\nPrinciples and standards for user experience design in Project Nova Star.',
+      md: '# Nova UX Guidelines\n\nPrinciples and standards for user experience design in Project Nova Star.\n\n- Clarity\n- Consistency\n- Accessibility',
+      pdf: 'This is a sample PDF content for Nova UX Guidelines',
+    },
+  },
+  {
+    id: 'doc_nova_db',
+    name: 'Nova Database Schema',
+    projectId: 'proj_nova_star',
+    createdAt: '2024-06-20T16:00:00Z',
+    version: 'v1.5.0',
+    content: {
+      txt: 'Nova Database Schema - Plain Text\nDetailed schema for the Project Nova Star database.',
+      md: '# Nova Database Schema\n\nDetailed schema for the Project Nova Star database.\n\n## Tables\n- `Users`\n- `Products`\n- `Settings`',
+      pdf: 'This is a sample PDF content for Nova Database Schema',
+    },
+  },
+  {
+    id: 'doc_nova_security',
+    name: 'Nova Security Protocols',
+    projectId: 'proj_nova_star',
+    createdAt: '2024-06-25T10:30:00Z',
+    version: 'v1.2.0',
+    content: {
+      txt: 'Nova Security Protocols - Plain Text\nSecurity measures and protocols for Project Nova Star.',
+      md: '# Nova Security Protocols\n\nSecurity measures and protocols for Project Nova Star.\n\n- Authentication\n- Authorization\n- Data Encryption',
+      pdf: 'This is a sample PDF content for Nova Security Protocols',
+    },
+  },
+  // Project Helios Prime Documents
+  {
+    id: 'doc_helios_intro',
+    name: 'Helios Introduction',
+    projectId: 'proj_helios_prime',
+    createdAt: '2024-05-10T08:00:00Z',
+    version: 'v1.0.0',
+    content: {
+      txt: 'Helios Introduction - Plain Text\nAn introduction to Project Helios Prime, its goals, and scope.',
+      md: '# Helios Introduction\n\nAn introduction to Project Helios Prime, its goals, and scope.\n\n## Goals\n- Goal 1\n- Goal 2',
+      pdf: 'This is a sample PDF content for Helios Introduction',
+    },
+  },
+  {
+    id: 'doc_helios_user_manual',
+    name: 'Helios User Manual',
+    projectId: 'proj_helios_prime',
+    createdAt: '2024-05-15T13:45:00Z',
+    version: 'v1.1.0',
+    content: {
+      txt: 'Helios User Manual - Plain Text\nGuide for end-users on how to use the Helios Prime system.',
+      md: '# Helios User Manual\n\nGuide for end-users on how to use the Helios Prime system.\n\n### Getting Started\n1. Login\n2. Navigate dashboard',
+      pdf: 'This is a sample PDF content for Helios User Manual',
+    },
+  },
+  {
+    id: 'doc_helios_dev_setup',
+    name: 'Helios Developer Setup',
+    projectId: 'proj_helios_prime',
+    createdAt: '2024-05-20T10:00:00Z',
+    version: 'v0.8.0',
+    content: {
+      txt: 'Helios Developer Setup - Plain Text\nInstructions for setting up the development environment for Project Helios Prime.',
+      md: '# Helios Developer Setup\n\nInstructions for setting up the development environment for Project Helios Prime.\n\n- Install Node.js\n- Install Docker\n- Run `npm install`',
+      pdf: 'This is a sample PDF content for Helios Developer Setup',
+    },
+  },
+  {
+    id: 'doc_helios_release_notes',
+    name: 'Helios Release Notes v1.1.0',
+    projectId: 'proj_helios_prime',
+    createdAt: '2024-05-15T17:00:00Z',
+    version: 'v1.1.0',
+    content: {
+        txt: 'Helios Release Notes v1.1.0 - Plain Text\nSummary of changes in version 1.1.0 of Project Helios Prime.',
+        md: '# Helios Release Notes v1.1.0\n\nSummary of changes in version 1.1.0 of Project Helios Prime.\n\n## New Features\n- Feature X\n- Feature Y\n\n## Bug Fixes\n- Fixed issue Z',
+        pdf: 'This is a sample PDF content for Helios Release Notes v1.1.0',
+    },
+  }
+];
 
 const ViewDocs = () => {
-  const [selectedDoc, setSelectedDoc] = useState('');
-  
-  const documents = [
-    { id: '1', name: 'Legacy Banking System - Technical Docs', project: 'Legacy Banking System', date: '2024-06-01', version: 'v1.0' },
-    { id: '2', name: 'E-commerce Backend - API Documentation', project: 'E-commerce Backend', date: '2024-05-28', version: 'v1.2' },
-    { id: '3', name: 'Customer Portal - User Guide', project: 'Customer Portal', date: '2024-05-25', version: 'v1.1' },
-  ];
+  const [currentView, setCurrentView] = useState<string>('projectList'); // 'projectList' or 'documentList'
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // Used when currentView is 'documentList'
 
-  const sampleDocContent = `# Legacy Banking System Documentation
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [selectedZipFormat, setSelectedZipFormat] = useState<keyof DocumentFile['content']>('md');
+  const [documentFilterTerm, setDocumentFilterTerm] = useState<string>('');
 
-## Project Overview
-This is a comprehensive legacy banking system built with Java and Spring Framework. The system handles core banking operations including account management, transactions, and reporting.
+  const documents = mockDocumentFiles;
+  const projects = mockProjects;
 
-## Architecture
-The system follows a three-tier architecture:
-- **Presentation Layer**: Web-based UI using JSP and Spring MVC
-- **Business Layer**: Core banking logic implemented in Spring Services
-- **Data Layer**: MySQL database with JPA/Hibernate ORM
+  // For 'documentList' view, documents are filtered by activeProjectId
+  const filteredDocumentsForActiveProject = useMemo(() => {
+    if (!activeProjectId) return [];
+    let projectDocs = documents.filter(doc => doc.projectId === activeProjectId);
 
-## Setup Instructions
-1. Install Java 8 or higher
-2. Install MySQL 5.7+
-3. Clone the repository
-4. Configure database connection in application.properties
-5. Run maven clean install
-6. Deploy to Tomcat server
+    if (documentFilterTerm) {
+      projectDocs = projectDocs.filter(doc =>
+        doc.name.toLowerCase().includes(documentFilterTerm.toLowerCase())
+      );
+    }
+    return projectDocs;
+  }, [documents, activeProjectId, documentFilterTerm]);
 
-## Core Modules
-### Account Management
-Handles customer account creation, modification, and closure operations.
+  // Reset selectedDocId if activeProjectId changes, filter term changes, or if the doc is not in the new list
+  useEffect(() => {
+    if (activeProjectId) {
+      // filteredDocumentsForActiveProject already incorporates the filter term
+      if (selectedDocId && !filteredDocumentsForActiveProject.find(doc => doc.id === selectedDocId)) {
+          setSelectedDocId(null);
+      }
+    } else {
+        setSelectedDocId(null);
+    }
+  }, [activeProjectId, selectedDocId, filteredDocumentsForActiveProject]);
 
-### Transaction Processing
-Processes various types of banking transactions including deposits, withdrawals, and transfers.
+  // Effect to ensure selectedDocId is null if no documents are available or none is explicitly selected by user action.
+  // Also, ensures selectedDocId is valid if documents list changes.
+  useEffect(() => {
+    if (currentView === 'documentList' && activeProjectId) {
+      if (filteredDocumentsForActiveProject.length === 0) {
+        setSelectedDocId(null); // No documents, so none can be selected
+      } else {
+        // If a document was selected, but it's no longer in the filtered list, deselect it.
+        // This keeps selectedDocId null until user clicks an item.
+        const isSelectedDocStillPresent = filteredDocumentsForActiveProject.some(doc => doc.id === selectedDocId);
+        if (selectedDocId && !isSelectedDocStillPresent) {
+          setSelectedDocId(null);
+        }
+        // No auto-selection of the first document. User must click.
+      }
+    }
+  }, [currentView, activeProjectId, filteredDocumentsForActiveProject, selectedDocId]);
 
-### Reporting
-Generates financial reports and statements for regulatory compliance.`;
+
+  const currentDocumentToDisplay = useMemo(() => {
+    if (!selectedDocId) return null;
+    return documents.find(doc => doc.id === selectedDocId);
+  }, [documents, selectedDocId]);
 
   const downloadFormats = [
-    { format: 'PDF', icon: '📄' },
-    { format: 'Markdown', icon: '📝' },
-    { format: 'HTML', icon: '🌐' },
+    { format: 'PDF', icon: '📄', key: 'pdf' as keyof DocumentFile['content'], mimeType: 'application/pdf' },
+    { format: 'Markdown', icon: '📝', key: 'md' as keyof DocumentFile['content'], mimeType: 'text/markdown;charset=utf-8' },
+    { format: 'TXT', icon: '📜', key: 'txt' as keyof DocumentFile['content'], mimeType: 'text/plain;charset=utf-8' },
   ];
 
-  return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">View Documentation</h1>
-        <p className="text-gray-600">Browse and download your generated documentation</p>
-      </div>
+  const handleDownload = (doc: DocumentFile, formatKey: keyof DocumentFile['content'], mimeType: string) => {
+    const contentToDownload = doc.content[formatKey];
+    const blob = new Blob([contentToDownload], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const extension = formatKey === 'md' ? 'md' : formatKey === 'pdf' ? 'pdf' : 'txt';
+    link.download = `${doc.name.replace(/\s+/g, '_')}_${doc.version}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* Document Selection */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Generated Documentation</h2>
-            
-            <div className="space-y-3">
-              {documents.map((doc) => (
-                <div
-                  key={doc.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-all duration-200 ${
-                    selectedDoc === doc.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setSelectedDoc(doc.id)}
-                >
-                  <div className="flex items-start space-x-3">
-                    <div className="p-1 bg-blue-100 rounded">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 text-sm truncate">{doc.name}</h3>
-                      <p className="text-xs text-gray-500 mt-1">{doc.project}</p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-gray-400">{doc.date}</span>
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">{doc.version}</span>
-                      </div>
+  const zipFormatOptions: { value: keyof DocumentFile['content']; label: string }[] = [
+    { value: 'txt', label: 'TXT' },
+    { value: 'md', label: 'Markdown' },
+    { value: 'pdf', label: 'PDF' },
+  ];
+
+  const handleDownloadAllAsZip = async () => {
+    if (!activeProjectId || filteredDocumentsForActiveProject.length === 0) {
+      console.warn("Download All as ZIP called under invalid conditions.");
+      return;
+    }
+
+    const currentProjectDetails = projects.find(p => p.id === activeProjectId);
+    if (!currentProjectDetails) {
+      console.error("Active project details not found for ZIP.");
+      return;
+    }
+
+    const zip = new JSZip();
+    const projectName = currentProjectDetails.name.replace(/\s+/g, '_');
+
+    filteredDocumentsForActiveProject.forEach(doc => {
+      const content = doc.content[selectedZipFormat];
+      const filename = `${doc.name.replace(/\s+/g, '_')}_${doc.version}.${selectedZipFormat}`;
+      zip.file(filename, content);
+    });
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipFilename = `${projectName}_documentation.zip`;
+      saveAs(zipBlob, zipFilename);
+    } catch (error) {
+      console.error("Failed to generate or download ZIP file:", error);
+    }
+  };
+
+  // New function to handle ZIP download from project card
+  const handleDownloadZipForProject = async (projectId: string) => {
+    const projectDetails = projects.find(p => p.id === projectId);
+    if (!projectDetails) {
+      console.error("Project details not found for ZIP download:", projectId);
+      // Optionally, show a user-facing error message
+      return;
+    }
+
+    const documentsForProject = documents.filter(doc => doc.projectId === projectId);
+    if (documentsForProject.length === 0) {
+      console.warn("No documents found for project:", projectId);
+      // Optionally, show a user-facing message (e.g., toast)
+      return;
+    }
+
+    const zip = new JSZip();
+    const projectName = projectDetails.name.replace(/\s+/g, '_');
+
+    documentsForProject.forEach(doc => {
+      const content = doc.content[selectedZipFormat]; // Uses page-level selectedZipFormat
+      const filename = `${doc.name.replace(/\s+/g, '_')}_${doc.version}.${selectedZipFormat}`;
+      zip.file(filename, content);
+    });
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipFilename = `${projectName}_documentation_${selectedZipFormat}.zip`; // Add format to zip name
+      saveAs(zipBlob, zipFilename);
+    } catch (error) {
+      console.error("Failed to generate or download ZIP file for project:", projectId, error);
+      // Optionally, show a user-facing error message
+    }
+  };
+
+  const navigateToDocumentView = (projectId: string) => {
+    setActiveProjectId(projectId);
+    setCurrentView('documentList');
+    setSelectedDocId(null);
+    setDocumentFilterTerm(''); // Reset filter when navigating to a new project's docs
+  };
+
+  const navigateToProjectListView = () => {
+    setCurrentView('projectList');
+    setActiveProjectId(null);
+    setSelectedDocId(null);
+    setDocumentFilterTerm(''); // Reset filter when going back to project list
+  };
+
+  const activeProjectName = useMemo(() => {
+    return projects.find(p => p.id === activeProjectId)?.name || "Selected Project";
+  }, [projects, activeProjectId]);
+
+
+  // Main Render Logic
+  if (currentView === 'projectList') {
+    return (
+      <div className="w-full mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
+          <p className="text-gray-600">Select a project to view its documentation.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {mockProjects.map(project => (
+            <Card key={project.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>{project.name}</CardTitle>
+                <CardDescription>
+                  {mockDocumentFiles.filter(doc => doc.projectId === project.id).length} documents
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={() => navigateToDocumentView(project.id)} className="w-full">
+                  View Documentation Files
+                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={() => handleDownloadZipForProject(project.id)}
+                    disabled={mockDocumentFiles.filter(doc => doc.projectId === project.id).length === 0}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download All as ZIP
+                  </Button>
+                  {/* This Select uses the page-level selectedZipFormat state */}
+                  <Select
+                    value={selectedZipFormat}
+                    onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}
+                  >
+                    <SelectTrigger className="w-[100px] flex-shrink-0">
+                      <SelectValue placeholder="Format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {zipFormatOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'documentList' && activeProjectId) {
+    // This is the existing UI, adapted for the new view structure
+    return (
+      <div className="w-full mx-auto p-6">
+        <div className="mb-8">
+            <Button onClick={navigateToProjectListView} variant="outline" className="mb-4">
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Projects
+            </Button>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {activeProjectName} - Documentation
+          </h1>
+          <p className="text-gray-600">Browse and download documentation for {activeProjectName}.</p>
+        </div>
+
+        <div className="flex min-h-[calc(100vh-12rem)] rounded-lg border transition-all duration-300">
+          <div className={`${selectedDocId ? 'w-80' : 'w-full'} transition-all duration-300 border-r`}>
+            <div className={`${selectedDocId ? 'p-3' : 'p-6'} space-y-6 h-full transition-all duration-300`}>
+              <Card className="flex flex-col h-full"> {/* Ensure card takes full height */}
+                <CardHeader className={selectedDocId ? 'p-3' : 'p-6'}>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className={selectedDocId ? 'text-lg' : 'text-xl'}>Documents</CardTitle>
+                    <div className="flex items-center space-x-1">
+                      <Button
+                        onClick={handleDownloadAllAsZip}
+                        disabled={filteredDocumentsForActiveProject.length === 0}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                      <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
+                        <SelectTrigger className="w-26 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {zipFormatOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                </div>
-              ))}
+                  {!selectedDocId && (
+                    <>
+                      <div className="mt-4">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground -translate-y-1/2" />
+                            <Input
+                                type="search"
+                                placeholder="Filter documents by name..."
+                                value={documentFilterTerm}
+                                onChange={(e) => setDocumentFilterTerm(e.target.value)}
+                                className="w-full rounded-lg bg-background pl-8"
+                            />
+                        </div>
+                      </div>
+
+                    </>
+                  )}
+                </CardHeader>
+                <CardContent className="flex-grow overflow-hidden"> {/* Allow content to grow and scroll */}
+                  <ScrollArea className="h-full"> {/* ScrollArea takes full height of CardContent */}
+                    <div className="space-y-2 pr-4">
+                      {filteredDocumentsForActiveProject.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-10">
+                          {documentFilterTerm
+                            ? "No documents match your filter."
+                            : "No documents found for this project."}
+                        </p>
+                      )}
+                      {filteredDocumentsForActiveProject.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                            selectedDocId === doc.id
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                          }`}
+                          onClick={() => setSelectedDocId(doc.id)}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="p-1 bg-blue-100 rounded flex-shrink-0">
+                              <FileText className="w-3 h-3 text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{doc.name}</div>
+                              <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                                <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs">{doc.version}</span>
+                              </div>
+                            </div>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 flex-shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Download className="w-3 h-3" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-2 space-y-1">
+                                {downloadFormats.map(df => (
+                                  <Button
+                                    key={df.key}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-start"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDownload(doc, df.key, df.mimeType);
+                                    }}
+                                  >
+                                    <span className="mr-2 text-xs">{df.icon}</span> Download as {df.format}
+                                  </Button>
+                                ))}
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
             </div>
           </div>
 
-          {/* Download Options */}
-          {selectedDoc && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Download Options</h3>
-              <div className="space-y-2">
-                {downloadFormats.map((format) => (
-                  <button
-                    key={format.format}
-                    className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="text-lg">{format.icon}</span>
-                      <span className="font-medium text-gray-900">{format.format}</span>
+          {/* Document viewer panel */}
+          {selectedDocId && currentDocumentToDisplay && (
+            <div className="flex-1">
+              <div className="p-6 h-full">
+                <Card className="h-full flex flex-col">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl">
+                        {currentDocumentToDisplay.name}
+                      </CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <Button variant="ghost" size="icon" onClick={() => setSelectedDocId(null)} aria-label="Close document viewer">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <Download className="w-4 h-4 text-gray-400" />
-                  </button>
-                ))}
+                    <CardDescription>
+                      Version: {currentDocumentToDisplay.version} |
+                      Created: {new Date(currentDocumentToDisplay.createdAt).toLocaleDateString()}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow prose max-w-none p-0">
+                    <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
+                      {currentDocumentToDisplay.content.md}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           )}
         </div>
-
-        {/* Document Viewer */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-full">
-            {selectedDoc ? (
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {documents.find(d => d.id === selectedDoc)?.name}
-                  </h2>
-                  <button className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
-                    Regenerate
-                  </button>
-                </div>
-                
-                <div className="prose max-w-none">
-                  <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap">
-                    {sampleDocContent}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-96">
-                <div className="text-center">
-                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select Documentation</h3>
-                  <p className="text-gray-500">Choose a document from the list to view its content</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
+    );
+  }
+
+  // Fallback or loading state if currentView is not 'projectList' and activeProjectId is null for 'documentList'
+  return (
+    <div className="w-full mx-auto p-6 text-center">
+        <p>Loading or invalid state...</p>
+        <Button onClick={navigateToProjectListView}>Go to Project List</Button>
     </div>
   );
 };
