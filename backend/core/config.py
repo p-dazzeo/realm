@@ -30,34 +30,7 @@ class UploadSettings(BaseSettings):
         env_prefix = "UPLOAD_"
 
 
-class ProjectsSettings(BaseSettings):
-    # Template settings
-    max_templates_per_user: int = Field(default=50)
-    default_template_rating: float = Field(default=0.0)
-    
-    # Collaboration settings
-    max_collaborators_per_project: int = Field(default=20)
-    invitation_expiry_days: int = Field(default=7)
-    
-    # Export settings
-    export_max_file_size: int = Field(default=1000)  # MB
-    export_link_expiry_hours: int = Field(default=24)
-    
-    # Analytics settings
-    analytics_retention_days: int = Field(default=365)
-    track_detailed_analytics: bool = Field(default=True)
-    
-    # Version settings
-    max_versions_per_project: int = Field(default=50)
-    auto_create_versions: bool = Field(default=False)
-    
-    class Config:
-        env_file = ".env"
-        env_prefix = "PROJECTS_"
-
-
 # Global settings instances
 core_settings = CoreSettings()
 upload_settings = UploadSettings()
-projects_settings = ProjectsSettings()
 settings = core_settings  # Backward compatibility 

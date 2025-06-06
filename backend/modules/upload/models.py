@@ -24,13 +24,6 @@ class Project(BaseModel, UUIDMixin):
     
     # Relationships
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
-    
-    # Using lazy imports to avoid circular imports
-    collaborators = relationship("ProjectCollaborator", back_populates="project", cascade="all, delete-orphan", lazy="select")
-    settings = relationship("ProjectSettings", back_populates="project", uselist=False, cascade="all, delete-orphan", lazy="select") 
-    tags = relationship("ProjectTag", secondary="project_tag_associations", back_populates="projects", lazy="select")
-    versions = relationship("ProjectVersion", back_populates="project", cascade="all, delete-orphan", lazy="select")
-    analytics = relationship("ProjectAnalytics", back_populates="project", uselist=False, cascade="all, delete-orphan", lazy="select")
 
 
 class ProjectFile(BaseModel):
