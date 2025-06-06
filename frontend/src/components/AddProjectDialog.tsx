@@ -7,44 +7,87 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import React, { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Assuming this exists
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
 interface AddProjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddProject: (project: { name: string; description: string; files: File[] }) => void;
+  onAddProject: (project: {
+    name: string;
+    description: string;
+    projectArchive: File | null;
+    additionalFilesList: File[];
+  }) => void;
 }
 
 const AddProjectDialog: React.FC<AddProjectDialogProps> = ({ isOpen, onClose, onAddProject }) => {
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
-  // Placeholder for file handling
-  // const [files, setFiles] = useState<File[]>([]);
+  const [projectArchive, setProjectArchive] = useState<File | null>(null);
+  const [additionalFilesList, setAdditionalFilesList] = useState<File[]>([]);
+
+  const projectArchiveInputRef = useRef<HTMLInputElement>(null);
+  const additionalFilesInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setProjectName('');
+    setProjectDescription('');
+    setProjectArchive(null);
+    setAdditionalFilesList([]);
+    if (projectArchiveInputRef.current) {
+      projectArchiveInputRef.current.value = '';
+    }
+    if (additionalFilesInputRef.current) {
+      additionalFilesInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
-    // Reset form when dialog opens or closes
     if (!isOpen) {
-      setProjectName('');
-      setProjectDescription('');
-      // setFiles([]);
+      resetForm();
     }
   }, [isOpen]);
 
   const handleAddProject = () => {
     if (!projectName.trim()) {
-      // Basic validation: project name is required
-      alert('Project Name is required.'); // Replace with a better notification if available
+      alert('Project Name is required.');
       return;
     }
+    // Basic validation: project archive is recommended
+    if (!projectArchive) {
+      if (!confirm("Are you sure you want to create a project without a main project archive?")) {
+        return;
+      }
+    }
+
     onAddProject({
       name: projectName,
       description: projectDescription,
-      files: [], // Placeholder for now
+      projectArchive: projectArchive,
+      additionalFilesList: additionalFilesList,
     });
-    onClose(); // Close dialog after adding
+    resetForm(); // Reset form fields
+    onClose(); // Close dialog
+  };
+
+  const handleProjectArchiveChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setProjectArchive(e.target.files[0]);
+    } else {
+      setProjectArchive(null);
+    }
+  };
+
+  const handleAdditionalFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setAdditionalFilesList(Array.from(e.target.files));
+    } else {
+      setAdditionalFilesList([]);
+    }
   };
 
   return (
@@ -79,17 +122,56 @@ const AddProjectDialog: React.FC<AddProjectDialogProps> = ({ isOpen, onClose, on
               onChange={(e) => setProjectDescription(e.target.value)}
               className="col-span-3"
               placeholder="A brief description of the project."
-              rows={4}
+              rows={3} // Adjusted rows
             />
           </div>
+
+          {/* Project Archive Input */}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="additionalFiles" className="text-right">
-              Additional Files
+            <Label htmlFor="projectArchive" className="text-right">
+              Project Archive
             </Label>
-            <div id="additionalFiles" className="col-span-3 border p-4 rounded-md text-sm text-gray-500">
-              File input for additional files will go here.
-            </div>
+            <Input
+              id="projectArchive"
+              type="file"
+              ref={projectArchiveInputRef}
+              onChange={handleProjectArchiveChange}
+              className="col-span-3 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              accept=".zip,.tar,.tar.gz,.tgz"
+            />
           </div>
+          {projectArchive && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <div className="col-start-2 col-span-3 text-sm text-gray-500">
+                Selected: {projectArchive.name}
+              </div>
+            </div>
+          )}
+
+          {/* Additional Files Input */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="additionalFilesList" className="text-right">
+              Supporting Docs
+            </Label>
+            <Input
+              id="additionalFilesList"
+              type="file"
+              multiple
+              ref={additionalFilesInputRef}
+              onChange={handleAdditionalFilesChange}
+              className="col-span-3 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
+            />
+          </div>
+          {additionalFilesList.length > 0 && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <div className="col-start-2 col-span-3 text-sm text-gray-500">
+                Selected: {additionalFilesList.length} file(s)
+                <ul className="list-disc pl-5">
+                  {additionalFilesList.map(file => <li key={file.name} className="truncate" title={file.name}>{file.name}</li>)}
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

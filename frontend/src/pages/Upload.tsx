@@ -12,154 +12,94 @@ import ProjectCard from '../components/ProjectCard';
 interface Project {
   id: number;
   name: string;
-  size: string;
+  size: string; // This might become less relevant if files are not directly uploaded/processed for size yet
   dateUploaded: string;
-  description?: string; // Optional description
+  description?: string;
+  archiveName?: string;
+  additionalFileCount?: number;
 }
 
 const Upload = () => {
-  const [dragActive, setDragActive] = useState(false);
-  const [projectName, setProjectName] = useState(''); // This seems to be for the direct upload section, not the dialog
-  const [projects, setProjects] = useState<Project[]>([ // Make projects state updatable and typed
-    { id: 1, name: 'Legacy Banking System', description: 'Core banking functionalities.', size: '15.2 MB', dateUploaded: '2024-06-01' },
-    { id: 2, name: 'E-commerce Backend', description: 'Handles orders and inventory.', size: '8.7 MB', dateUploaded: '2024-05-28' },
-    { id: 3, name: 'Customer Portal', description: 'Allows customers to manage accounts.', size: '12.1 MB', dateUploaded: '2024-05-25' },
+  // Removed: dragActive, projectName state and handleDrag, handleDrop handlers
+  const [projects, setProjects] = useState<Project[]>([
+    { id: 1, name: 'Legacy Banking System', description: 'Core banking functionalities.', size: '15.2 MB', dateUploaded: '2024-06-01', archiveName: 'legacy-v1.zip', additionalFileCount: 2 },
+    { id: 2, name: 'E-commerce Backend', description: 'Handles orders and inventory.', size: '8.7 MB', dateUploaded: '2024-05-28', archiveName: 'ecommerce.zip', additionalFileCount: 0 },
+    { id: 3, name: 'Customer Portal', description: 'Allows customers to manage accounts.', size: '12.1 MB', dateUploaded: '2024-05-25', archiveName: 'portal.zip', additionalFileCount: 5 },
   ]);
   const [isAddProjectDialogOpen, setIsAddProjectDialogOpen] = useState(false);
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      console.log('File dropped:', e.dataTransfer.files[0]);
-      // Potentially link this to the AddProjectDialog or a similar flow
-    }
-  };
-
-  const handleAddProjectSubmit = (projectData: { name: string; description: string }) => {
+  const handleAddProjectSubmit = (projectData: {
+    name: string;
+    description: string;
+    projectArchive: File | null;
+    additionalFilesList: File[];
+  }) => {
     const newProject: Project = {
-      id: Date.now(), // Simple unique ID
+      id: Date.now(),
       name: projectData.name,
       description: projectData.description,
-      size: '0 MB', // Placeholder
-      dateUploaded: new Date().toLocaleDateString('en-CA'), // Format YYYY-MM-DD
+      archiveName: projectData.projectArchive?.name,
+      additionalFileCount: projectData.additionalFilesList.length,
+      size: projectData.projectArchive ? `${(projectData.projectArchive.size / (1024 * 1024)).toFixed(2)} MB` : 'N/A', // Calculate size from archive
+      dateUploaded: new Date().toLocaleDateString('en-CA'),
     };
-    setProjects(prevProjects => [...prevProjects, newProject]);
+    setProjects(prevProjects => [newProject, ...prevProjects]); // Add to the beginning of the list
     setIsAddProjectDialogOpen(false);
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto p-6"> {/* Adjusted max-width for single column focus */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Project</h1>
-        <p className="text-gray-600">Upload your legacy codebase to generate documentation</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Projects</h1> {/* Changed title */}
+        <p className="text-gray-600">Manage your code analysis projects.</p> {/* Changed subtitle */}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
-        {/* Upload Section */}
-        <div className="space-y-6">
+      {/* Projects List - now the main content area */}
+      {/* Adjusted grid to be single column, or remove grid if Card takes full width by default */}
+      <div className="space-y-6">
+        {projects.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>New Project</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>All Projects</CardTitle> {/* Changed from Recent Projects */}
+                <Button variant="default" onClick={() => setIsAddProjectDialogOpen(true)}> {/* Changed variant for emphasis */}
+                  <Plus className="mr-2 h-4 w-4" /> Add New Project
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="projectName">Project Name</Label>
-                <Input
-                  id="projectName"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="Enter project name"
-                />
-              </div>
-
-              <div
-                className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
-                  dragActive
-                    ? 'border-blue-400 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-              >
-                <UploadIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <div className="space-y-2">
-                  <p className="text-lg font-medium text-gray-900">
-                    Drop your codebase here
-                  </p>
-                  <p className="text-gray-500">
-                    or{' '}
-                    <Button variant="link" className="p-0 h-auto font-medium">
-                      browse files
-                    </Button>
-                  </p>
-                  <p className="text-sm text-gray-400">
-                    Supports ZIP, TAR, and other archive formats
-                  </p>
-                </div>
-              </div>
-
-              <Button className="w-full">
-                Upload Project
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Projects List */}
-        <div className="space-y-6">
-          {projects.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Recent Projects</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => setIsAddProjectDialogOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Project
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
+            <CardContent>
                 <div className="space-y-3">
                   {projects.map((project) => (
                     <ProjectCard
                       key={project.id}
                       name={project.name}
                       description={project.description}
-                      size={project.size}
+                      size={project.size} // Consider updating what 'size' means here
                       dateUploaded={project.dateUploaded}
+                      // Pass new props if ProjectCard is updated, e.g.:
+                      // archiveName={project.archiveName}
+                      // additionalFileCount={project.additionalFileCount}
                     />
                   ))}
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card>
-              <CardContent className="text-center py-12">
-                <p className="text-gray-500 mb-4">
-                  No projects found. Click 'Add Project' to get started!
+            <Card className="border-dashed">
+              <CardContent className="text-center py-20">
+                <UploadIcon className="mx-auto h-16 w-16 text-gray-400 mb-6" />
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No projects yet</h3>
+                <p className="text-gray-500 mb-6">
+                  Get started by adding your first project.
                 </p>
-                <Button onClick={() => setIsAddProjectDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Project
+                <Button onClick={() => setIsAddProjectDialogOpen(true)} size="lg">
+                  <Plus className="mr-2 h-5 w-5" /> Add New Project
                 </Button>
               </CardContent>
             </Card>
           )}
         </div>
-      </div>
+      {/* Removed the div that created a second column. AddProjectDialog is a modal, doesn't need to be in grid. */}
       <AddProjectDialog
         isOpen={isAddProjectDialogOpen}
         onClose={() => setIsAddProjectDialogOpen(false)}

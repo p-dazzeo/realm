@@ -56,92 +56,35 @@ class UploadService:
         self,
         db: AsyncSession,
         project_data: ProjectCreate,
-        main_file: Optional[UploadFile] = None,
-        additional_files: List[UploadFile] = None
+        uploaded_file: UploadFile # Restored single file parameter
     ) -> Tuple[Project, UploadSession]:
         """
-        Intelligent upload that tries parser first, falls back to direct upload.
-        Can handle a main project archive/file and/or a list of additional files.
+        Intelligent upload that tries parser first, falls back to direct upload
         """
-        if additional_files is None:
-            additional_files = []
-
-        log_main_file = main_file.filename if main_file and main_file.filename else "None"
-        log_num_additional = len(additional_files)
-        logger.info("Starting intelligent project upload",
-                    main_file=log_main_file,
-                    num_additional_files=log_num_additional,
-                    project_name=project_data.name)
+        logger.info("Starting intelligent project upload", filename=uploaded_file.filename, project_name=project_data.name)
         
         # Create upload session
-        # Default to PARSER if main_file exists and looks like an archive, else DIRECT might be more appropriate.
-        # For simplicity, keeping PARSER as initial, it will fallback if not suitable.
         session = await self.create_upload_session(db, UploadMethod.PARSER)
         
-        all_processed_files_for_db = []
-
         try:
-            if main_file and main_file.filename:
-                extracted_main_files = await self._extract_project_files(main_file)
-                all_processed_files_for_db.extend(extracted_main_files)
-
-            # Process additional_files
-            additional_file_paths_for_response: List[str] = []
-            if additional_files:
-                logger.info(f"Processing {len(additional_files)} additional files.")
-                for add_file in additional_files:
-                    if add_file.filename:
-                        content_bytes = await add_file.read()
-                        await add_file.seek(0) # Reset pointer
-                        file_size = len(content_bytes)
-
-                        # Basic validation for additional files too
-                        if file_size > settings.max_individual_file_size * 1024 * 1024:
-                            logger.warning(f"Skipping additional file {add_file.filename} due to size.")
-                            session.warnings = session.warnings or []
-                            session.warnings.append(f"File {add_file.filename} skipped (too large).")
-                            continue
-
-                        # Print name and size as requested by subtask
-                        logger.info(f"Received additional file: {add_file.filename}, size: {file_size} bytes")
-                        additional_file_paths_for_response.append(add_file.filename)
-
-                        try:
-                            content_text = content_bytes.decode('utf-8')
-                            is_binary = False
-                        except UnicodeDecodeError:
-                            content_text = content_bytes.decode('utf-8', errors='ignore') # Store with replacements
-                            is_binary = True
-
-                        all_processed_files_for_db.append({
-                            'filename': add_file.filename,
-                            'relative_path': add_file.filename, # Treat as root files for now
-                            'content': content_text,
-                            'size': file_size,
-                            'is_binary': is_binary
-                        })
-                    else:
-                        logger.warning("Received an additional file without a filename.")
+            # First, try to extract and analyze the uploaded file
+            extracted_files = await self._extract_project_files(uploaded_file)
             
-            if not all_processed_files_for_db:
-                raise HTTPException(status_code=400, detail="No valid files to process after extraction and filtering.")
+            if not extracted_files:
+                 raise HTTPException(status_code=400, detail="No valid files found after extraction or file is empty.")
 
-            # Update session with total file count
-            session.total_files = len(all_processed_files_for_db)
+            # Update session with file count
+            session.total_files = len(extracted_files)
             await db.commit()
             
-            # Try parser first if enabled (primarily for main_file if it was an archive)
-            # If only additional_files are present, parser might not be the best fit unless they form a known structure.
-            # Current logic: if parser_service_enabled, it will try for all files.
+            # Try parser first if enabled
             if settings.parser_service_enabled:
                 logger.info("Attempting parser upload", session_id=session.session_id)
                 try:
                     project = await self._upload_via_parser(
-                        db, session, project_data, all_processed_files_for_db
+                        db, session, project_data, extracted_files
                     )
                     logger.info("Parser upload successful", project_id=project.id)
-                     # Add additional_file_paths to the project object for the response
-                    project.additional_file_paths = additional_file_paths_for_response
                     return project, session
                     
                 except Exception as e:
@@ -149,6 +92,7 @@ class UploadService:
                         "Parser upload failed, falling back to direct upload",
                         error=str(e), session_id=session.session_id
                     )
+                    # Update session method and continue with direct upload
                     session.upload_method = UploadMethod.DIRECT
                     session.errors = session.errors or []
                     session.errors.append(f"Parser failed: {str(e)}")
@@ -157,11 +101,9 @@ class UploadService:
             # Fallback to direct upload
             logger.info("Using direct upload", session_id=session.session_id)
             project = await self._upload_direct(
-                db, session, project_data, all_processed_files_for_db
+                db, session, project_data, extracted_files
             )
             logger.info("Direct upload successful", project_id=project.id)
-            # Add additional_file_paths to the project object for the response
-            project.additional_file_paths = additional_file_paths_for_response
             return project, session
             
         except Exception as e:

@@ -19,14 +19,11 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 
-from typing import Optional, List # Ensure List is imported
-
 @router.post("/project", response_model=UploadResponse)
 async def upload_project(
     project_name: str = Form(...),
-    description: Optional[str] = Form(None), # Renamed from project_description
-    project_archive_file: Optional[UploadFile] = File(None), # Main project archive (e.g. zip)
-    additional_files: List[UploadFile] = File([]), # For other individual files
+    project_description: Optional[str] = Form(None), # Restored name
+    file: UploadFile = File(...), # Restored single file parameter
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -36,37 +33,24 @@ async def upload_project(
     1. Try to use the parser service first (if enabled)
     2. Fallback to direct upload if parser fails or is unavailable
     
-    Accepts ZIP archives or single files, and/or additional loose files.
+    Accepts ZIP archives or single files.
     """
-    # Log main file if present, or number of additional files
-    main_file_info = project_archive_file.filename if project_archive_file and project_archive_file.filename else "No main archive"
-    additional_files_info = f"{len(additional_files)} additional files"
-    logger.info("Project upload request", name=project_name, main_file=main_file_info, additional_files_count=len(additional_files))
+    logger.info("Project upload request", name=project_name, filename=file.filename)
     
     try:
-        # Validate file inputs: at least one type of file input should be provided
-        if not project_archive_file and not additional_files:
-            raise HTTPException(status_code=400, detail="No project archive or additional files provided.")
-        if project_archive_file and not project_archive_file.filename: # Handles case where File(None) still results in an UploadFile with no filename
-             project_archive_file = None # Treat as if no file was sent
-        if not project_archive_file and not additional_files: # Re-check after potential nullification
-             raise HTTPException(status_code=400, detail="No project archive or additional files provided.")
+        # Validate file
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
 
         # Create project data
         project_data = ProjectCreate(
             name=project_name,
-            description=description # Use the new 'description' field name
+            description=project_description # Restored description field name
         )
         
-        # This call will need to be adapted in the service layer.
-        # Assuming upload_project_intelligent is the correct entry point and will handle these.
-        # Or, this might need to call create_project_with_upload directly if logic dictates.
-        # For now, passing them to upload_project_intelligent as a placeholder for service layer changes.
+        # Use intelligent upload service
         project, session = await upload_service.upload_project_intelligent(
-            db=db,
-            project_data=project_data,
-            main_file=project_archive_file, # Pass the main archive file
-            additional_files=additional_files # Pass the list of additional files
+            db, project_data, file # Restored call signature
         )
         
         warnings = session.warnings if session.warnings else None
