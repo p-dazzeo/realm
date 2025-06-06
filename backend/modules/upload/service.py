@@ -360,8 +360,6 @@ class UploadService:
                 
                 # Update session progress
                 session.processed_files = processed_count
-                if processed_count % 10 == 0:  # Update every 10 files
-                    await db.commit()
                     
             except Exception as e:
                 failed_count += 1
