@@ -24,6 +24,14 @@ class Project(BaseModel, UUIDMixin):
     
     # Relationships
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
+    
+    # Enhanced relationships (defined in modules/projects/models.py to avoid circular imports)
+    # These relationships are added through the projects module:
+    # collaborators = relationship("ProjectCollaborator", back_populates="project", cascade="all, delete-orphan")
+    # settings = relationship("ProjectSettings", back_populates="project", uselist=False, cascade="all, delete-orphan") 
+    # tags = relationship("ProjectTag", secondary="project_tag_associations", back_populates="projects")
+    # versions = relationship("ProjectVersion", back_populates="project", cascade="all, delete-orphan")
+    # analytics = relationship("ProjectAnalytics", back_populates="project", uselist=False, cascade="all, delete-orphan")
 
 
 class ProjectFile(BaseModel):

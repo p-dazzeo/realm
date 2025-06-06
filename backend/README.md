@@ -1,6 +1,6 @@
 # REALM Backend
 
-A FastAPI-based backend service for the REALM Legacy Codebase Documentation Platform. Provides intelligent codebase upload, storage, and management with optional external parser integration.
+A FastAPI-based backend service for the REALM Legacy Codebase Documentation Platform. Features modular architecture with intelligent codebase upload, enhanced project management, collaboration tools, and extensible module system.
 
 ## 🚀 Quick Start
 
@@ -25,33 +25,36 @@ cp .env.example .env
 # Edit .env with your database URL and settings
 
 # 5. Run the application
-uv run python -m app.main
+uv run python main.py
 ```
 
 API Documentation: `http://localhost:8000/docs`
 
 ## 🏗️ Architecture
 
-The backend uses an **intelligent upload system** that automatically tries the parser service first, then falls back to direct upload if needed.
+REALM backend features a **modular architecture** with feature-based modules and an intelligent upload system.
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   File Upload   │───▶│  Upload Service  │───▶│   PostgreSQL    │
+│   API Request   │───▶│  Module Router   │───▶│   PostgreSQL    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                │
                                ▼
                     ┌──────────────────┐
-                    │ Parser Service   │ (Optional)
-                    │ External API     │
+                    │ Module Services  │
+                    │ Upload │Projects │
+                    │ Chat   │GenDoc   │ (Planned)
                     └──────────────────┘
 ```
 
-### Core Components
+### Modular Components
 
-- **FastAPI Application**: RESTful API with automatic documentation
-- **Upload Service**: Intelligent dual-method upload handling
-- **Database Layer**: PostgreSQL with JSONB for structured/unstructured data
-- **Parser Integration**: Optional external service for advanced code analysis
+- **Core Infrastructure**: Configuration, database, dependencies
+- **Upload Module**: Intelligent file upload with parser integration  
+- **Projects Module**: ✅ Enhanced project management, collaboration, templates
+- **Chat Module**: 🔄 LLM integration (Planned)
+- **GenDoc Module**: 🔄 Documentation generation (Planned)
+- **Shared Components**: Base models, utilities, schemas
 
 ## 📊 Database Schema
 
@@ -86,20 +89,52 @@ Progress tracking and error collection
 
 ## 🔌 API Endpoints
 
-### Upload Management
+### Upload Module
 ```http
 POST   /api/v1/upload/project           # Upload project (ZIP/single file)
 GET    /api/v1/upload/session/{id}      # Get upload session status
 GET    /api/v1/upload/projects          # List projects (paginated)
 GET    /api/v1/upload/projects/{id}     # Get project details
 DELETE /api/v1/upload/projects/{id}     # Delete project
+POST   /api/v1/upload/test-parser       # Test parser service connection
+GET    /api/v1/upload/health            # Upload module health check
 ```
 
-### Utility
+### Projects Module ✅
 ```http
-POST   /api/v1/upload/test-parser       # Test parser service connection
-GET    /api/v1/upload/health            # Service health check
+# Templates
+POST   /api/v1/projects/templates       # Create project template
+GET    /api/v1/projects/templates       # List templates with filtering
+GET    /api/v1/projects/templates/{id}  # Get specific template
+
+# Enhanced Projects
+POST   /api/v1/projects/                # Create enhanced project
+GET    /api/v1/projects/                # Search projects with advanced filtering
+GET    /api/v1/projects/{id}            # Get project with relationships
+PUT    /api/v1/projects/{id}            # Update project
+
+# Collaboration
+POST   /api/v1/projects/{id}/collaborators        # Add collaborator
+GET    /api/v1/projects/{id}/collaborators        # List collaborators
+PUT    /api/v1/projects/collaborators/{id}        # Update collaborator
+DELETE /api/v1/projects/{id}/collaborators/{uid}  # Remove collaborator
+
+# Settings & Analytics
+GET    /api/v1/projects/{id}/settings    # Get project settings
+PUT    /api/v1/projects/{id}/settings    # Update project settings
+GET    /api/v1/projects/{id}/analytics   # Get project analytics
+
+# Versioning & Export
+POST   /api/v1/projects/{id}/versions    # Create project version
+GET    /api/v1/projects/{id}/versions    # List project versions
+POST   /api/v1/projects/{id}/export      # Export project
+GET    /api/v1/projects/health           # Projects module health check
+```
+
+### System
+```http
 GET    /health                          # Application health check
+GET    /                                # API information
 ```
 
 ### Example Upload
@@ -138,22 +173,36 @@ UploadMethod.PARSER   # External parser service
 UploadMethod.DIRECT   # Direct file storage
 ```
 
-## 🧩 Project Structure
+## 🧩 Modular Project Structure
 
 ```
 backend/
-├── app/
-│   ├── main.py              # FastAPI application setup
-│   ├── config.py            # Environment configuration
-│   ├── database.py          # Database connection and setup
-│   ├── models.py            # SQLAlchemy data models
-│   ├── schemas.py           # Pydantic request/response models
-│   ├── api/
-│   │   └── upload.py        # Upload endpoints
-│   └── services/
-│       └── upload_service.py # Core upload logic
-├── pyproject.toml           # Dependencies and project config
-└── README.md               # This documentation
+├── core/                    # Core infrastructure
+│   ├── config.py           # Enhanced configuration system
+│   ├── database.py         # Database connection and setup  
+│   └── dependencies.py     # FastAPI dependency injection
+├── shared/                  # Cross-cutting concerns
+│   ├── models/
+│   │   └── base.py         # Base model classes
+│   ├── schemas/            # Common schemas
+│   └── utils/              # Shared utilities
+├── modules/                 # Feature modules
+│   ├── upload/             # Upload functionality
+│   │   ├── models.py       # Upload-specific models
+│   │   ├── schemas.py      # Upload schemas
+│   │   ├── service.py      # Upload business logic
+│   │   ├── router.py       # Upload API endpoints
+│   │   └── parsers/        # Parser implementations
+│   └── projects/           # ✅ Enhanced project management
+│       ├── models.py       # Project templates, collaboration, etc.
+│       ├── schemas.py      # Project management schemas
+│       ├── service.py      # Project business logic
+│       ├── router.py       # Project API endpoints
+│       └── README.md       # Projects module documentation
+├── integrations/           # External service integrations
+├── main.py                 # Application entry point
+├── pyproject.toml          # Dependencies and project config
+└── README.md              # This documentation
 ```
 
 ## 🔌 Parser Service Integration
@@ -207,11 +256,21 @@ CMD ["uv", "run", "python", "-m", "app.main"]
 
 ## 📝 Development
 
-### Adding New Features
-- **Models**: Add to `app/models.py`
-- **Schemas**: Add to `app/schemas.py` 
-- **Endpoints**: Create new router in `app/api/`
-- **Services**: Add business logic to `app/services/`
+### Module Development
+Follow the established patterns from the upload and projects modules:
+
+1. **Create Module Directory**: `modules/new_module/`
+2. **Add Models**: `models.py` with SQLAlchemy models
+3. **Define Schemas**: `schemas.py` with Pydantic models  
+4. **Implement Service**: `service.py` with business logic
+5. **Create Router**: `router.py` with FastAPI endpoints
+6. **Register in Main**: Import and include router in `main.py`
+
+### Current Modules
+- ✅ **Upload Module**: File upload with parser integration
+- ✅ **Projects Module**: Enhanced project management with collaboration
+- 🔄 **Chat Module**: LLM integration (Planned)
+- 🔄 **GenDoc Module**: Documentation generation (Planned)
 
 ### Key Dependencies
 - `fastapi`: Web framework

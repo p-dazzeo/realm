@@ -4,10 +4,11 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import structlog
 
-from core.config import core_settings, upload_settings
+from core.config import core_settings, upload_settings, projects_settings
 from core.database import create_tables, close_db
 from modules.upload.router import router as upload_router
 from modules.upload.service import upload_service
+from modules.projects.router import router as projects_router
 
 
 # Configure structured logging
@@ -111,6 +112,7 @@ async def general_exception_handler(request, exc):
 
 # Include routers
 app.include_router(upload_router, prefix="/api/v1")
+app.include_router(projects_router, prefix="/api/v1")
 
 
 # Root endpoint
@@ -122,7 +124,8 @@ async def root():
         "version": "0.1.0",
         "description": "Legacy Codebase Documentation Platform Backend",
         "docs": "/docs",
-        "health": "/api/v1/upload/health"
+        "health": "/api/v1/upload/health",
+        "projects_health": "/api/v1/projects/health"
     }
 
 
@@ -135,7 +138,9 @@ async def health_check():
         "service": "realm-backend",
         "version": "0.1.0",
         "parser_enabled": upload_settings.parser_service_enabled,
-        "parser_url": upload_settings.parser_service_url if upload_settings.parser_service_enabled else None
+        "parser_url": upload_settings.parser_service_url if upload_settings.parser_service_enabled else None,
+        "projects_enabled": True,
+        "max_collaborators": projects_settings.max_collaborators_per_project
     }
 
 
