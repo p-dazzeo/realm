@@ -72,6 +72,7 @@ class Project(ProjectBase):
     created_at: datetime
     updated_at: Optional[datetime]
     files: List[ProjectFile] = []
+    additional_file_paths: Optional[List[str]] = None
 
 
 class ProjectSummary(ProjectBase):

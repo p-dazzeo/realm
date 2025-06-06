@@ -3,18 +3,29 @@ import React, { useState } from 'react';
 import { Upload as UploadIcon, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import AddProjectDialog from '../components/AddProjectDialog'; // Import the dialog
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ProjectCard from '../components/ProjectCard';
 
+// Define project type for clarity
+interface Project {
+  id: number;
+  name: string;
+  size: string;
+  dateUploaded: string;
+  description?: string; // Optional description
+}
+
 const Upload = () => {
   const [dragActive, setDragActive] = useState(false);
-  const [projectName, setProjectName] = useState('');
-  const [projects] = useState([
-    { id: 1, name: 'Legacy Banking System', size: '15.2 MB', dateUploaded: '2024-06-01' },
-    { id: 2, name: 'E-commerce Backend', size: '8.7 MB', dateUploaded: '2024-05-28' },
-    { id: 3, name: 'Customer Portal', size: '12.1 MB', dateUploaded: '2024-05-25' },
+  const [projectName, setProjectName] = useState(''); // This seems to be for the direct upload section, not the dialog
+  const [projects, setProjects] = useState<Project[]>([ // Make projects state updatable and typed
+    { id: 1, name: 'Legacy Banking System', description: 'Core banking functionalities.', size: '15.2 MB', dateUploaded: '2024-06-01' },
+    { id: 2, name: 'E-commerce Backend', description: 'Handles orders and inventory.', size: '8.7 MB', dateUploaded: '2024-05-28' },
+    { id: 3, name: 'Customer Portal', description: 'Allows customers to manage accounts.', size: '12.1 MB', dateUploaded: '2024-05-25' },
   ]);
+  const [isAddProjectDialogOpen, setIsAddProjectDialogOpen] = useState(false);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -33,7 +44,20 @@ const Upload = () => {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       console.log('File dropped:', e.dataTransfer.files[0]);
+      // Potentially link this to the AddProjectDialog or a similar flow
     }
+  };
+
+  const handleAddProjectSubmit = (projectData: { name: string; description: string }) => {
+    const newProject: Project = {
+      id: Date.now(), // Simple unique ID
+      name: projectData.name,
+      description: projectData.description,
+      size: '0 MB', // Placeholder
+      dateUploaded: new Date().toLocaleDateString('en-CA'), // Format YYYY-MM-DD
+    };
+    setProjects(prevProjects => [...prevProjects, newProject]);
+    setIsAddProjectDialogOpen(false);
   };
 
   return (
@@ -98,28 +122,49 @@ const Upload = () => {
 
         {/* Projects List */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Recent Projects</CardTitle>
-                <Plus className="w-5 h-5 text-gray-400" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {projects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    name={project.name}
-                    size={project.size}
-                    dateUploaded={project.dateUploaded}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {projects.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Recent Projects</CardTitle>
+                  <Button variant="outline" size="sm" onClick={() => setIsAddProjectDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Project
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {projects.map((project) => (
+                    <ProjectCard
+                      key={project.id}
+                      name={project.name}
+                      description={project.description}
+                      size={project.size}
+                      dateUploaded={project.dateUploaded}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="text-center py-12">
+                <p className="text-gray-500 mb-4">
+                  No projects found. Click 'Add Project' to get started!
+                </p>
+                <Button onClick={() => setIsAddProjectDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Project
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
+      <AddProjectDialog
+        isOpen={isAddProjectDialogOpen}
+        onClose={() => setIsAddProjectDialogOpen(false)}
+        onAddProject={handleAddProjectSubmit}
+      />
     </div>
   );
 };
