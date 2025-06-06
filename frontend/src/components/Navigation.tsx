@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Upload, FileText, MessageSquare, Book, User, AlignCenter } from 'lucide-react';
@@ -31,7 +30,7 @@ const Navigation = ({ isVisible }: NavigationProps) => {
         </center>
       </div>
       
-      <ul className="space-y-2 flex-1">
+      <ul className="space-y-2">
         {navItems.map((item) => (
           <li key={item.to}>
             <NavLink
@@ -53,7 +52,7 @@ const Navigation = ({ isVisible }: NavigationProps) => {
       </ul>
 
       {/* User section at bottom */}
-      <div className="mt-auto pt-4 border-t border-slate-700">
+      <div className="pt-4 border-t border-slate-700">
         <NavLink
           to="/dashboard"
           className={({ isActive }) =>

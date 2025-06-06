@@ -98,77 +98,63 @@ const AddProjectDialog: React.FC<AddProjectDialogProps> = ({ isOpen, onClose, on
             Enter the details for your new project.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="projectName" className="text-right">
-              Project Name
-            </Label>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="projectName">Project Name</Label>
             <Input
               id="projectName"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              className="col-span-3"
               placeholder="My Awesome Project"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="projectDescription" className="text-right">
-              Description
-            </Label>
+          <div className="space-y-2">
+            <Label htmlFor="projectDescription">Description</Label>
             <Textarea
               id="projectDescription"
               value={projectDescription}
               onChange={(e) => setProjectDescription(e.target.value)}
-              className="col-span-3"
               placeholder="A brief description of the project."
-              rows={3} // Adjusted rows
+              rows={3}
             />
           </div>
 
           {/* Project Archive Input */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="projectArchive" className="text-right">
-              Project Archive
-            </Label>
+          <div className="space-y-2">
+            <Label htmlFor="projectArchive">Project Archive (.zip, .tar.gz)</Label>
             <Input
               id="projectArchive"
               type="file"
               ref={projectArchiveInputRef}
               onChange={handleProjectArchiveChange}
-              className="col-span-3 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              className="h-auto p-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               accept=".zip,.tar,.tar.gz,.tgz"
             />
           </div>
           {projectArchive && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <div className="col-start-2 col-span-3 text-sm text-gray-500">
-                Selected: {projectArchive.name}
-              </div>
+            <div className="text-sm text-gray-500">
+              Selected: {projectArchive.name}
             </div>
           )}
 
           {/* Additional Files Input */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="additionalFilesList" className="text-right">
-              Supporting Docs
-            </Label>
+          <div className="space-y-2">
+            <Label htmlFor="additionalFilesList">Supporting Docs</Label>
             <Input
               id="additionalFilesList"
               type="file"
               multiple
               ref={additionalFilesInputRef}
               onChange={handleAdditionalFilesChange}
-              className="col-span-3 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
+              className="h-auto p-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
             />
           </div>
           {additionalFilesList.length > 0 && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <div className="col-start-2 col-span-3 text-sm text-gray-500">
-                Selected: {additionalFilesList.length} file(s)
-                <ul className="list-disc pl-5">
-                  {additionalFilesList.map(file => <li key={file.name} className="truncate" title={file.name}>{file.name}</li>)}
-                </ul>
-              </div>
+            <div className="text-sm text-gray-500">
+              Selected: {additionalFilesList.length} file(s)
+              <ul className="list-disc pl-5 mt-1">
+                {additionalFilesList.map(file => <li key={file.name} className="truncate" title={file.name}>{file.name}</li>)}
+              </ul>
             </div>
           )}
         </div>

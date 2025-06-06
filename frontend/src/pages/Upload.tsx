@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Upload as UploadIcon, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -48,7 +47,7 @@ const Upload = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6"> {/* Adjusted max-width for single column focus */}
+    <div className="max-w-7xl mx-auto p-6"> {/* Adjusted max-width for single column focus */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">My Projects</h1> {/* Changed title */}
         <p className="text-gray-600">Manage your code analysis projects.</p> {/* Changed subtitle */}
@@ -68,37 +67,35 @@ const Upload = () => {
               </div>
             </CardHeader>
             <CardContent>
-                <div className="space-y-3">
-                  {projects.map((project) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {projects.map((project) => (
+                  <Card key={project.id}>
                     <ProjectCard
-                      key={project.id}
                       name={project.name}
                       description={project.description}
-                      size={project.size} // Consider updating what 'size' means here
+                      size={project.size}
                       dateUploaded={project.dateUploaded}
-                      // Pass new props if ProjectCard is updated, e.g.:
-                      // archiveName={project.archiveName}
-                      // additionalFileCount={project.additionalFileCount}
                     />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-dashed">
-              <CardContent className="text-center py-20">
-                <UploadIcon className="mx-auto h-16 w-16 text-gray-400 mb-6" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">No projects yet</h3>
-                <p className="text-gray-500 mb-6">
-                  Get started by adding your first project.
-                </p>
-                <Button onClick={() => setIsAddProjectDialogOpen(true)} size="lg">
-                  <Plus className="mr-2 h-5 w-5" /> Add New Project
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="text-center py-20">
+              <UploadIcon className="mx-auto h-16 w-16 text-gray-400 mb-6" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No projects yet</h3>
+              <p className="text-gray-500 mb-6">
+                Get started by adding your first project.
+              </p>
+              <Button onClick={() => setIsAddProjectDialogOpen(true)} size="lg">
+                <Plus className="mr-2 h-5 w-5" /> Add New Project
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
       {/* Removed the div that created a second column. AddProjectDialog is a modal, doesn't need to be in grid. */}
       <AddProjectDialog
         isOpen={isAddProjectDialogOpen}
