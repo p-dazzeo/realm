@@ -6,13 +6,14 @@ import { cn } from '@/lib/utils';
 
 interface ProjectCardProps {
   name: string;
+  description?: string; // Added description prop
   size: string;
   dateUploaded: string;
   onSelect?: () => void;
   isSelected?: boolean;
 }
 
-const ProjectCard = ({ name, size, dateUploaded, onSelect, isSelected }: ProjectCardProps) => {
+const ProjectCard = ({ name, description, size, dateUploaded, onSelect, isSelected }: ProjectCardProps) => {
   return (
     <Card
       className={cn(
@@ -30,7 +31,12 @@ const ProjectCard = ({ name, size, dateUploaded, onSelect, isSelected }: Project
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-semibold text-gray-900 truncate">{name}</h3>
-            <p className="text-sm text-gray-500 mt-1">Size: {size}</p>
+            {description && (
+              <p className="text-sm text-gray-600 mt-1 truncate">
+                {description}
+              </p>
+            )}
+            <p className="text-sm text-gray-500 mt-2">Size: {size}</p>
             <p className="text-sm text-gray-500">Uploaded: {dateUploaded}</p>
           </div>
         </div>

@@ -22,8 +22,8 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 @router.post("/project", response_model=UploadResponse)
 async def upload_project(
     project_name: str = Form(...),
-    project_description: Optional[str] = Form(None),
-    file: UploadFile = File(...),
+    project_description: Optional[str] = Form(None), # Restored name
+    file: UploadFile = File(...), # Restored single file parameter
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -41,16 +41,16 @@ async def upload_project(
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
-        
+
         # Create project data
         project_data = ProjectCreate(
             name=project_name,
-            description=project_description
+            description=project_description # Restored description field name
         )
         
         # Use intelligent upload service
         project, session = await upload_service.upload_project_intelligent(
-            db, project_data, file
+            db, project_data, file # Restored call signature
         )
         
         warnings = session.warnings if session.warnings else None

@@ -56,12 +56,12 @@ class UploadService:
         self,
         db: AsyncSession,
         project_data: ProjectCreate,
-        uploaded_file: UploadFile
+        uploaded_file: UploadFile # Restored single file parameter
     ) -> Tuple[Project, UploadSession]:
         """
         Intelligent upload that tries parser first, falls back to direct upload
         """
-        logger.info("Starting intelligent project upload", filename=uploaded_file.filename)
+        logger.info("Starting intelligent project upload", filename=uploaded_file.filename, project_name=project_data.name)
         
         # Create upload session
         session = await self.create_upload_session(db, UploadMethod.PARSER)
@@ -70,6 +70,9 @@ class UploadService:
             # First, try to extract and analyze the uploaded file
             extracted_files = await self._extract_project_files(uploaded_file)
             
+            if not extracted_files:
+                 raise HTTPException(status_code=400, detail="No valid files found after extraction or file is empty.")
+
             # Update session with file count
             session.total_files = len(extracted_files)
             await db.commit()
@@ -91,7 +94,8 @@ class UploadService:
                     )
                     # Update session method and continue with direct upload
                     session.upload_method = UploadMethod.DIRECT
-                    session.errors = [f"Parser failed: {str(e)}"]
+                    session.errors = session.errors or []
+                    session.errors.append(f"Parser failed: {str(e)}")
                     await db.commit()
             
             # Fallback to direct upload
