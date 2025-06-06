@@ -333,7 +333,7 @@ const ViewDocs = () => {
   // Main Render Logic
   if (currentView === 'projectList') {
     return (
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="w-full mx-auto p-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
           <p className="text-gray-600">Select a project to view its documentation.</p>
@@ -387,7 +387,7 @@ const ViewDocs = () => {
   if (currentView === 'documentList' && activeProjectId) {
     // This is the existing UI, adapted for the new view structure
     return (
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="w-full mx-auto p-6">
         <div className="mb-8">
             <Button onClick={navigateToProjectListView} variant="outline" className="mb-4">
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back to Projects
@@ -405,28 +405,26 @@ const ViewDocs = () => {
                 <CardHeader className={selectedDocId ? 'p-3' : 'p-6'}>
                   <div className="flex items-center justify-between">
                     <CardTitle className={selectedDocId ? 'text-lg' : 'text-xl'}>Documents</CardTitle>
-                    {selectedDocId && (
-                      <div className="flex items-center space-x-1">
-                        <Button
-                          onClick={handleDownloadAllAsZip}
-                          disabled={filteredDocumentsForActiveProject.length === 0}
-                          variant="ghost"
-                          size="sm"
-                        >
-                          <Download className="w-3 h-3" />
-                        </Button>
-                        <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
-                          <SelectTrigger className="w-26 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {zipFormatOptions.map(option => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    <div className="flex items-center space-x-1">
+                      <Button
+                        onClick={handleDownloadAllAsZip}
+                        disabled={filteredDocumentsForActiveProject.length === 0}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                      <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
+                        <SelectTrigger className="w-26 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {zipFormatOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   {!selectedDocId && (
                     <>
@@ -442,26 +440,7 @@ const ViewDocs = () => {
                             />
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2 mt-4">
-                        <Button
-                          onClick={handleDownloadAllAsZip}
-                          disabled={filteredDocumentsForActiveProject.length === 0}
-                          className="flex-grow"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download All as ZIP
-                        </Button>
-                        <Select value={selectedZipFormat} onValueChange={(value) => setSelectedZipFormat(value as keyof DocumentFile['content'])}>
-                          <SelectTrigger className="w-[120px] flex-shrink-0">
-                            <SelectValue placeholder="Format" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {zipFormatOptions.map(option => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+
                     </>
                   )}
                 </CardHeader>
@@ -545,9 +524,6 @@ const ViewDocs = () => {
                         {currentDocumentToDisplay.name}
                       </CardTitle>
                       <div className="flex items-center space-x-2">
-                        <Button size="sm">
-                          Regenerate
-                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => setSelectedDocId(null)} aria-label="Close document viewer">
                           <X className="h-4 w-4" />
                         </Button>
@@ -574,7 +550,7 @@ const ViewDocs = () => {
 
   // Fallback or loading state if currentView is not 'projectList' and activeProjectId is null for 'documentList'
   return (
-    <div className="max-w-6xl mx-auto p-6 text-center">
+    <div className="w-full mx-auto p-6 text-center">
         <p>Loading or invalid state...</p>
         <Button onClick={navigateToProjectListView}>Go to Project List</Button>
     </div>
