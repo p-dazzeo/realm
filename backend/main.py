@@ -31,7 +31,6 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        # Use ConsoleRenderer for better terminal output instead of JSONRenderer
         structlog.dev.ConsoleRenderer(colors=True)
     ],
     context_class=dict,
