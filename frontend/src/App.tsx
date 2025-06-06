@@ -30,12 +30,11 @@ const App = () => {
             <main className={`flex-1 overflow-auto transition-all duration-300 ease-in-out ${
               sidebarVisible ? 'ml-0' : '-ml-64'
             }`}>
-              <div className="p-4">
+              <div className="p-1">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSidebarVisible(!sidebarVisible)}
-                  className="mb-4"
                 >
                   <Menu className="w-4 h-4" />
                 </Button>
