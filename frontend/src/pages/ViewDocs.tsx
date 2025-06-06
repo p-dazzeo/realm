@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, FileText, ArrowLeft, Search } from 'lucide-react'; // Added Search Icon
+import { Download, FileText, ArrowLeft, Search, X } from 'lucide-react'; // Added X and Search Icons
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input"; // Import Input component
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"; // Import Popover components
 
 interface Project {
   id: string;
@@ -196,16 +197,23 @@ const ViewDocs = () => {
     }
   }, [activeProjectId, selectedDocId, filteredDocumentsForActiveProject]);
 
-  // Auto-select first document in 'documentList' view based on current filters
+  // Effect to ensure selectedDocId is null if no documents are available or none is explicitly selected by user action.
+  // Also, ensures selectedDocId is valid if documents list changes.
   useEffect(() => {
     if (currentView === 'documentList' && activeProjectId) {
-      if (filteredDocumentsForActiveProject.length > 0 && !selectedDocId) {
-        setSelectedDocId(filteredDocumentsForActiveProject[0].id);
-      } else if (filteredDocumentsForActiveProject.length === 0) {
-        setSelectedDocId(null);
+      if (filteredDocumentsForActiveProject.length === 0) {
+        setSelectedDocId(null); // No documents, so none can be selected
+      } else {
+        // If a document was selected, but it's no longer in the filtered list, deselect it.
+        // This keeps selectedDocId null until user clicks an item.
+        const isSelectedDocStillPresent = filteredDocumentsForActiveProject.some(doc => doc.id === selectedDocId);
+        if (selectedDocId && !isSelectedDocStillPresent) {
+          setSelectedDocId(null);
+        }
+        // No auto-selection of the first document. User must click.
       }
     }
-  }, [currentView, activeProjectId, documents, selectedDocId]);
+  }, [currentView, activeProjectId, filteredDocumentsForActiveProject, selectedDocId]);
 
 
   const currentDocumentToDisplay = useMemo(() => {
@@ -391,10 +399,14 @@ const ViewDocs = () => {
           <p className="text-gray-600">Browse and download documentation for {activeProjectName}.</p>
         </div>
 
-        <ResizablePanelGroup direction="horizontal" className="min-h-[calc(100vh-12rem)] rounded-lg border">
-          <ResizablePanel defaultSize={33}>
-            <div className="p-6 space-y-6">
-              <Card>
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="min-h-[calc(100vh-12rem)] rounded-lg border"
+          key={activeProjectId ? (selectedDocId ? 'doc-selected' : 'doc-not-selected') : 'no-project'} // Force re-render on selection change for panel size
+        >
+          <ResizablePanel defaultSize={selectedDocId ? 33 : 100}>
+            <div className="p-6 space-y-6 h-full"> {/* Ensure div takes full height for scroll area */}
+              <Card className="flex flex-col h-full"> {/* Ensure card takes full height */}
                 <CardHeader>
                   <CardTitle>Documents</CardTitle>
                   <div className="mt-4">
@@ -430,13 +442,11 @@ const ViewDocs = () => {
                     </Select>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  {/* Adjusted height to account for new elements in header, similar to previous adjustment */}
-                  {/* Adjusted height: consider input field (approx 2.5rem + margin 1rem = 3.5rem) */}
-                  <ScrollArea className="h-[calc(100vh-32rem-3rem-3.5rem)]">
+                <CardContent className="flex-grow overflow-hidden"> {/* Allow content to grow and scroll */}
+                  <ScrollArea className="h-full"> {/* ScrollArea takes full height of CardContent */}
                     <div className="space-y-3 pr-4">
                       {filteredDocumentsForActiveProject.length === 0 && (
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-500 text-center py-10">
                           {documentFilterTerm
                             ? "No documents match your filter."
                             : "No documents found for this project."}
@@ -459,8 +469,36 @@ const ViewDocs = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <CardTitle className="text-sm font-medium truncate">{doc.name}</CardTitle>
-                                {/* Project name in CardDescription is redundant here as we are in a project-specific view */}
                               </div>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="ml-auto flex-shrink-0" // Position to the right
+                                    onClick={(e) => e.stopPropagation()} // Prevent card click
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-2 space-y-1">
+                                  {downloadFormats.map(df => (
+                                    <Button
+                                      key={df.key}
+                                      variant="ghost"
+                                      size="sm"
+                                      className="w-full justify-start"
+                                      onClick={(e) => {
+                                        e.stopPropagation(); // Prevent card click just in case
+                                        handleDownload(doc, df.key, df.mimeType);
+                                        // Optionally close popover here if not closing automatically
+                                      }}
+                                    >
+                                      <span className="mr-2 text-xs">{df.icon}</span> Download as {df.format}
+                                    </Button>
+                                  ))}
+                                </PopoverContent>
+                              </Popover>
                             </div>
                           </CardHeader>
                           <CardContent className="p-4 pt-0">
@@ -475,48 +513,31 @@ const ViewDocs = () => {
                   </ScrollArea>
                 </CardContent>
               </Card>
-
-            {currentDocumentToDisplay && ( // Ensure currentDocumentToDisplay is not null
-              <Card>
-                <CardHeader>
-                  <CardTitle>Download Options</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                  {downloadFormats.map((format) => (
-                    <Button
-                      key={format.format}
-                      variant="outline"
-                      className="w-full justify-between"
-                      onClick={() => handleDownload(currentDocumentToDisplay, format.key, format.mimeType)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span className="text-lg">{format.icon}</span>
-                        <span className="font-medium text-gray-900">{format.format}</span>
-                      </div>
-                      <Download className="w-4 h-4 text-gray-400" />
-                    </Button>
-                  ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            </div>
+              {/* Old Download Options card REMOVED from here */}
+            </div> {/* End of first panel's content div */}
           </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={67}>
-            <div className="p-6 h-full">
-              <Card className="h-full flex flex-col">
-                {currentDocumentToDisplay ? (
-                  <>
+
+          {/* Conditionally render handle and viewer panel */}
+          {selectedDocId && currentDocumentToDisplay && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={67}>
+                <div className="p-6 h-full">
+                  <Card className="h-full flex flex-col">
+                    {/* This inner content is already conditional on currentDocumentToDisplay by its nature */}
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-xl">
                           {currentDocumentToDisplay.name}
                         </CardTitle>
-                        <Button size="sm"> {/* Placeholder Regenerate button */}
-                          Regenerate
-                        </Button>
+                        <div className="flex items-center space-x-2">
+                          <Button size="sm"> {/* Placeholder Regenerate button */}
+                            Regenerate
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedDocId(null)} aria-label="Close document viewer">
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       <CardDescription>
                         Version: {currentDocumentToDisplay.version} |
@@ -528,23 +549,18 @@ const ViewDocs = () => {
                         {currentDocumentToDisplay.content.md}
                       </div>
                     </CardContent>
-                  </>
-                ) : (
-                  <CardContent className="flex flex-col items-center justify-center h-full">
-                    <div className="text-center">
-                      <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Document</h3>
-                      <p className="text-gray-500">
-                        {filteredDocumentsForActiveProject.length > 0
-                            ? "Choose a document from the list to view its content."
-                            : "No documents available in this project."}
-                      </p>
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-            </div>
-          </ResizablePanel>
+                  </Card>
+                </div>
+              </ResizablePanel>
+            </>
+          )}
+          {/* If no document is selected, the ResizablePanelGroup will only contain the first panel, which will take 100% width.
+              The placeholder logic (like "Select a document") would naturally fit inside the (now non-existent) right panel
+              or be implicitly understood by the lack of a selected item / viewer.
+              The existing placeholder for an empty *list* is in the left panel's ScrollArea.
+              If we want a specific message in the main area when no doc is selected, it has to be outside or instead of this panel group,
+              or the right panel must always exist. The current approach of not rendering the right panel is cleaner for 100% width goal.
+          */}
         </ResizablePanelGroup>
       </div>
     );
