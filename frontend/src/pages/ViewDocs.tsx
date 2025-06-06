@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -23,24 +23,30 @@ const ViewDocs = () => {
   const projectOptions = [
     { value: 'all', label: 'All Projects' },
     ...Array.from(new Set(documents.map(doc => doc.projectId))).map(projectId => {
+      const projectDoc = documents.find(doc => doc.projectId === projectId);
       return {
         value: projectId,
-        label: documents.find(doc => doc.projectId === projectId)!.project // Non-null assertion
+        label: projectDoc ? projectDoc.project : 'Unknown Project' // Safer access
       }
     })
   ];
 
   // Filter documents based on selected project
-  const filteredDocuments = documents.filter(doc => {
-    if (selectedProject === 'all') return true;
-    return doc.projectId === selectedProject;
-  });
+  const filteredDocuments = useMemo(() => {
+    return documents.filter(doc => {
+      if (selectedProject === 'all') return true;
+      return doc.projectId === selectedProject;
+    });
+  }, [documents, selectedProject]);
 
   // Effect to reset selectedDoc if it's not in the filtered list
   useEffect(() => {
     if (selectedDoc && !filteredDocuments.find(doc => doc.id === selectedDoc)) {
       setSelectedDoc('');
     }
+  // IMPORTANT: Added `filteredDocuments` to dependency array, as it's now memoized.
+  // However, the original code already had it, which is correct.
+  // The primary change is useMemo for filteredDocuments calculation.
   }, [selectedProject, selectedDoc, filteredDocuments]);
 
   const sampleDocContent = `# Legacy Banking System Documentation
@@ -87,11 +93,10 @@ Generates financial reports and statements for regulatory compliance.`;
 
       <ResizablePanelGroup direction="horizontal" className="min-h-[calc(100vh-10rem)] rounded-lg border">
         <ResizablePanel defaultSize={33}>
-          {/* Document Selection */}
-          <div className="p-6 space-y-6"> {/* Added space-y-6 for spacing between cards */}
+          <div className="p-6 space-y-6">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center mb-4"> {/* Added container for title and select */}
+                <div className="flex justify-between items-center mb-4">
                   <CardTitle>Generated Documentation</CardTitle>
                   <Select value={selectedProject} onValueChange={setSelectedProject}>
                     <SelectTrigger className="w-[180px]">
@@ -105,9 +110,10 @@ Generates financial reports and statements for regulatory compliance.`;
                   </Select>
                 </div>
               </CardHeader>
-              <CardContent> {/* Content padding might need adjustment if header is taller */}
-                <ScrollArea className="h-[calc(100vh-32rem)]"> {/* Adjusted height due to select in header */}
-                  <div className="space-y-3 pr-4"> {/* Added pr-4 for scrollbar spacing */}
+              {/*
+              <CardContent>
+                <ScrollArea className="h-[calc(100vh-32rem)]">
+                  <div className="space-y-3 pr-4">
                     {filteredDocuments.map((doc) => (
                       <Card
                         key={doc.id}
@@ -118,9 +124,9 @@ Generates financial reports and statements for regulatory compliance.`;
                         }`}
                         onClick={() => setSelectedDoc(doc.id)}
                       >
-                        <CardHeader className="p-4"> {/* Reduced padding */}
+                        <CardHeader className="p-4">
                           <div className="flex items-start space-x-3">
-                            <div className="p-1 bg-blue-100 rounded mt-1"> {/* Added mt-1 for alignment with text */}
+                            <div className="p-1 bg-blue-100 rounded mt-1">
                               <FileText className="w-4 h-4 text-blue-600" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -129,10 +135,10 @@ Generates financial reports and statements for regulatory compliance.`;
                             </div>
                           </div>
                         </CardHeader>
-                        <CardContent className="p-4 pt-0"> {/* Reduced padding, removed top padding */}
+                        <CardContent className="p-4 pt-0">
                           <div className="flex items-center justify-between text-xs text-gray-500">
                             <span>{doc.date}</span>
-                            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full">{doc.version}</span> {/* Adjusted padding and rounded */}
+                            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full">{doc.version}</span>
                           </div>
                         </CardContent>
                       </Card>
@@ -140,9 +146,10 @@ Generates financial reports and statements for regulatory compliance.`;
                   </div>
                 </ScrollArea>
               </CardContent>
+              */}
             </Card>
 
-          {/* Download Options */}
+          {/*
           {selectedDoc && (
             <Card>
               <CardHeader>
@@ -154,7 +161,7 @@ Generates financial reports and statements for regulatory compliance.`;
                   <Button
                     key={format.format}
                     variant="outline"
-                    className="w-full justify-between" // justify-between will spread the two inner divs
+                    className="w-full justify-between"
                   >
                     <div className="flex items-center space-x-3">
                       <span className="text-lg">{format.icon}</span>
@@ -167,32 +174,34 @@ Generates financial reports and statements for regulatory compliance.`;
               </CardContent>
             </Card>
           )}
+          */}
+          </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={67}>
+        <ResizableHandle withHandle /> {/* This should be uncommented if the group is active */}
+        <ResizablePanel defaultSize={67}> {/* This should be uncommented if the group is active */}
           {/* Document Viewer */}
-          <div className="p-6 h-full"> {/* Added padding that was part of the card previously */}
+          <div className="p-6 h-full">
             <Card className="h-full flex flex-col">
               {selectedDoc ? (
                 <>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl"> {/* Applied text-xl to match original h2 */}
+                      <CardTitle className="text-xl">
                         {documents.find(d => d.id === selectedDoc)?.name}
                       </CardTitle>
-                      <Button size="sm"> {/* Using shadcn Button, sm size for consistency */}
+                      <Button size="sm">
                         Regenerate
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex-grow prose max-w-none p-0"> {/* Added flex-grow and removed padding */}
-                    <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto"> {/* Added h-full and overflow-auto */}
+                  <CardContent className="flex-grow prose max-w-none p-0">
+                    <div className="bg-gray-50 rounded-lg p-6 font-mono text-sm whitespace-pre-wrap h-full overflow-auto">
                       {sampleDocContent}
                     </div>
                   </CardContent>
                 </>
               ) : (
-                <CardContent className="flex flex-col items-center justify-center h-full"> {/* Centering content */}
+                <CardContent className="flex flex-col items-center justify-center h-full">
                   <div className="text-center">
                     <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Select Documentation</h3>
