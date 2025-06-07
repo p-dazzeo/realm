@@ -98,7 +98,7 @@ const Generate = () => {
             <div className="space-y-4">
               {sections.map((section) => (
                 <Card key={section.id} className="shadow-none border">
-                  <CardContent className="space-y-3"> {/* Removed p-4, relying on CardContent default padding */}
+                  <CardContent className="p-6 space-y-3">
                     <Input
                       type="text"
                       value={section.title}
