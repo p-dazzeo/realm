@@ -38,9 +38,48 @@ class ProjectRepository:
             raise DatabaseException(
                 detail=f"Error retrieving project with id {project_id}",
                 operation="get_by_id",
-                entity_type="Project",
-                entity_id=project_id,
-                original_error=e
+                entity="Project"
+            )
+    
+    @staticmethod
+    async def get_by_id_with_relations(
+        db: AsyncSession, 
+        project_id: int,
+        load_files: bool = True,
+        load_additional_files: bool = True
+    ) -> Optional[Project]:
+        """
+        Get a project by ID with explicit control over which relationships to load.
+        
+        Args:
+            db: Database session
+            project_id: ID of the project to retrieve
+            load_files: Whether to load the files relationship
+            load_additional_files: Whether to load the additional_files relationship
+            
+        Returns:
+            Project object if found, None otherwise
+        """
+        try:
+            query = select(Project).where(Project.id == project_id)
+            
+            if load_files:
+                query = query.options(selectinload(Project.files))
+            if load_additional_files:
+                query = query.options(selectinload(Project.additional_files))
+                
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error("Database error while getting project by ID with relations", 
+                       project_id=project_id,
+                       load_files=load_files,
+                       load_additional_files=load_additional_files,
+                       error=str(e))
+            raise DatabaseException(
+                detail=f"Error retrieving project with id {project_id}",
+                operation="get_by_id_with_relations",
+                entity="Project"
             )
     
     @staticmethod
@@ -199,9 +238,43 @@ class FileRepository:
             raise DatabaseException(
                 detail=f"Error retrieving file with id {file_id}",
                 operation="get_by_id",
-                entity_type="ProjectFile",
-                entity_id=file_id,
-                original_error=e
+                entity="ProjectFile"
+            )
+    
+    @staticmethod
+    async def get_by_id_with_relations(
+        db: AsyncSession, 
+        file_id: int,
+        load_project: bool = True
+    ) -> Optional[ProjectFile]:
+        """
+        Get a file by ID with explicit control over which relationships to load.
+        
+        Args:
+            db: Database session
+            file_id: ID of the file to retrieve
+            load_project: Whether to load the project relationship
+            
+        Returns:
+            ProjectFile object if found, None otherwise
+        """
+        try:
+            query = select(ProjectFile).where(ProjectFile.id == file_id)
+            
+            if load_project:
+                query = query.options(selectinload(ProjectFile.project))
+                
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error("Database error while getting file by ID with relations", 
+                       file_id=file_id,
+                       load_project=load_project,
+                       error=str(e))
+            raise DatabaseException(
+                detail=f"Error retrieving file with id {file_id}",
+                operation="get_by_id_with_relations",
+                entity="ProjectFile"
             )
     
     @staticmethod
@@ -309,16 +382,56 @@ class AdditionalFileRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error("Database error while getting additional file", 
+            logger.error("Database error while getting additional file by ID", 
                        file_id=file_id, 
-                       project_id=project_id, 
+                       project_id=project_id,
                        error=str(e))
             raise DatabaseException(
-                detail=f"Error retrieving additional file with id {file_id}",
+                detail=f"Error retrieving additional file with id {file_id} for project {project_id}",
                 operation="get_by_id",
-                entity_type="AdditionalProjectFile",
-                entity_id=file_id,
-                original_error=e
+                entity="AdditionalProjectFile"
+            )
+    
+    @staticmethod
+    async def get_by_id_with_relations(
+        db: AsyncSession, 
+        file_id: int,
+        project_id: int,
+        load_project: bool = True
+    ) -> Optional[AdditionalProjectFile]:
+        """
+        Get an additional file by ID with explicit control over which relationships to load.
+        
+        Args:
+            db: Database session
+            file_id: ID of the additional file to retrieve
+            project_id: ID of the project the file belongs to
+            load_project: Whether to load the project relationship
+            
+        Returns:
+            AdditionalProjectFile object if found, None otherwise
+        """
+        try:
+            query = select(AdditionalProjectFile).where(
+                AdditionalProjectFile.id == file_id,
+                AdditionalProjectFile.project_id == project_id
+            )
+            
+            if load_project:
+                query = query.options(selectinload(AdditionalProjectFile.project))
+                
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error("Database error while getting additional file by ID with relations", 
+                       file_id=file_id,
+                       project_id=project_id,
+                       load_project=load_project,
+                       error=str(e))
+            raise DatabaseException(
+                detail=f"Error retrieving additional file with id {file_id} for project {project_id}",
+                operation="get_by_id_with_relations",
+                entity="AdditionalProjectFile"
             )
     
     @staticmethod

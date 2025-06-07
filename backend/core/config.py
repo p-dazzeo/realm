@@ -3,8 +3,8 @@ Configuration management for the application.
 This module provides Pydantic settings classes for all application configurations.
 """
 import os
-from pydantic_settings import BaseSettings
-from pydantic import Field, validator, ValidationInfo, field_validator, DirectoryPath
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, ValidationInfo, field_validator, DirectoryPath
 from typing import List, Dict, Any, Optional
 import logging
 
@@ -14,6 +14,12 @@ ENV = os.getenv("APP_ENV", "development").lower()
 
 class CoreSettings(BaseSettings):
     """Core application settings."""
+    
+    model_config = SettingsConfigDict(
+        env_file=f".env.{ENV}" if os.path.exists(f".env.{ENV}") else ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
     
     # Database
     database_url: str = Field(
@@ -35,29 +41,33 @@ class CoreSettings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     
-    @validator("log_level")
-    def validate_log_level(cls, v):
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
         """Validate log level."""
         allowed_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if v.upper() not in allowed_levels:
             raise ValueError(f"Log level must be one of {allowed_levels}")
         return v.upper()
     
-    @validator("secret_key")
-    def validate_secret_key(cls, v, values, **kwargs):
+    @field_validator("secret_key")
+    @classmethod
+    def validate_secret_key(cls, v: str, info: ValidationInfo) -> str:
         """Validate secret key based on environment."""
         if ENV == "production" and v == "your-secret-key-change-in-production":
             raise ValueError("Default secret key cannot be used in production")
         return v
-    
-    class Config:
-        env_file = f".env.{ENV}" if os.path.exists(f".env.{ENV}") else ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 class UploadSettings(BaseSettings):
     """Upload and file handling settings."""
+    
+    model_config = SettingsConfigDict(
+        env_file=f".env.{ENV}" if os.path.exists(f".env.{ENV}") else ".env",
+        env_file_encoding="utf-8",
+        env_prefix="UPLOAD_",
+        case_sensitive=False
+    )
     
     # Parser Service
     parser_service_url: str = Field(
@@ -110,19 +120,13 @@ class UploadSettings(BaseSettings):
         """Ensure storage directory exists."""
         os.makedirs(v, exist_ok=True)
         return v
-    
-    class Config:
-        env_file = f".env.{ENV}" if os.path.exists(f".env.{ENV}") else ".env"
-        env_file_encoding = "utf-8"
-        env_prefix = "UPLOAD_"
-        case_sensitive = False
 
 
 def get_settings() -> Dict[str, Any]:
     """Get all application settings."""
     return {
-        "core": core_settings.dict(),
-        "upload": upload_settings.dict()
+        "core": core_settings.model_dump(),
+        "upload": upload_settings.model_dump()
     }
 
 
