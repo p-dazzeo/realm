@@ -22,7 +22,14 @@ class ProjectRepository:
     async def get_by_id(db: AsyncSession, project_id: int) -> Optional[Project]:
         """Get a project by ID."""
         try:
-            result = await db.execute(select(Project).where(Project.id == project_id))
+            result = await db.execute(
+                select(Project)
+                .where(Project.id == project_id)
+                .options(
+                    selectinload(Project.files),
+                    selectinload(Project.additional_files)
+                )
+            )
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error("Database error while getting project by ID", 
@@ -40,7 +47,14 @@ class ProjectRepository:
     async def get_by_uuid(db: AsyncSession, uuid: str) -> Optional[Project]:
         """Get a project by UUID."""
         try:
-            result = await db.execute(select(Project).where(Project.uuid == uuid))
+            result = await db.execute(
+                select(Project)
+                .where(Project.uuid == uuid)
+                .options(
+                    selectinload(Project.files),
+                    selectinload(Project.additional_files)
+                )
+            )
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error("Database error while getting project by UUID", 
@@ -172,7 +186,11 @@ class FileRepository:
     async def get_by_id(db: AsyncSession, file_id: int) -> Optional[ProjectFile]:
         """Get a file by ID."""
         try:
-            result = await db.execute(select(ProjectFile).where(ProjectFile.id == file_id))
+            result = await db.execute(
+                select(ProjectFile)
+                .where(ProjectFile.id == file_id)
+                .options(selectinload(ProjectFile.project))
+            )
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error("Database error while getting file by ID", 
@@ -193,6 +211,7 @@ class FileRepository:
             result = await db.execute(
                 select(ProjectFile)
                 .where(ProjectFile.project_id == project_id)
+                .options(selectinload(ProjectFile.project))
                 .order_by(ProjectFile.file_path)
             )
             return list(result.scalars().all())
@@ -309,6 +328,7 @@ class AdditionalFileRepository:
             result = await db.execute(
                 select(AdditionalProjectFile)
                 .where(AdditionalProjectFile.project_id == project_id)
+                .options(selectinload(AdditionalProjectFile.project))
                 .order_by(AdditionalProjectFile.filename)
             )
             return list(result.scalars().all())
@@ -405,6 +425,8 @@ class UploadSessionRepository:
     async def get_by_id(db: AsyncSession, session_id: str) -> Optional[UploadSession]:
         """Get a session by ID."""
         try:
+            # No need to eager load relationships here as UploadSession doesn't have any complex relationships
+            # that would be accessed frequently in the application flow
             result = await db.execute(select(UploadSession).where(UploadSession.session_id == session_id))
             return result.scalar_one_or_none()
         except Exception as e:
