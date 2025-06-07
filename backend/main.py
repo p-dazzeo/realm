@@ -4,13 +4,24 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import structlog
 
-from app.config import settings
-from app.database import create_tables, close_db
-from app.api.upload import router as upload_router
-from app.services.upload_service import upload_service
+from core.config import core_settings, upload_settings, validate_all_settings, get_settings, ENV
+from core.database import create_tables, close_db
+from modules.upload.routers import router as upload_router
+from modules.upload.service import upload_service
+from shared.exceptions import AppException
 
 
 # Configure structured logging
+import logging
+import sys
+
+# Configure standard library logging first
+logging.basicConfig(
+    format="%(message)s",
+    stream=sys.stdout,
+    level=logging.INFO,
+)
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -21,7 +32,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer(colors=True)
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -36,9 +47,14 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    logger.info("Starting REALM backend", version="0.1.0")
+    logger.info("Starting REALM backend", version="0.1.0", environment=ENV)
     
     try:
+        # Validate settings
+        if not validate_all_settings():
+            logger.error("Settings validation failed, exiting")
+            raise SystemExit("Settings validation failed")
+            
         # Create database tables
         await create_tables()
         logger.info("Database initialized")
@@ -79,6 +95,42 @@ app.add_middleware(
 
 
 # Global exception handler
+@app.exception_handler(AppException)
+async def app_exception_handler(request, exc: AppException):
+    """Handle application-specific exceptions with structured response"""
+    log_method = logger.warning if exc.status_code < 500 else logger.error
+    
+    log_kwargs = {
+        "status_code": exc.status_code,
+        "error_code": exc.error_code,
+        "detail": exc.detail,
+        "path": request.url.path
+    }
+    
+    # Include context in log if available
+    if hasattr(exc, "context") and exc.context:
+        log_kwargs["context"] = exc.context
+    
+    log_method("Application exception", **log_kwargs)
+    
+    # Prepare response content
+    content = {
+        "error": exc.detail,
+        "error_code": exc.error_code,
+        "status_code": exc.status_code
+    }
+    
+    # Include context in response if available and if not an internal error
+    if hasattr(exc, "context") and exc.context and exc.status_code < 500:
+        # For 5xx errors, we don't want to expose internal details to clients
+        content["context"] = exc.context
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+        headers=exc.headers
+    )
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions with structured logging"""
@@ -134,18 +186,28 @@ async def health_check():
         "status": "healthy",
         "service": "realm-backend",
         "version": "0.1.0",
-        "parser_enabled": settings.parser_service_enabled,
-        "parser_url": settings.parser_service_url if settings.parser_service_enabled else None
+        "environment": ENV,
+        "parser_enabled": upload_settings.parser_service_enabled,
+        "parser_url": upload_settings.parser_service_url if upload_settings.parser_service_enabled else None
     }
+
+# Configuration endpoint (only exposed in non-production environments)
+@app.get("/config")
+async def get_configuration():
+    """Get application configuration"""
+    if ENV == "production":
+        return {"message": "Configuration not available in production"}
+    
+    return get_settings()
 
 
 if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=settings.api_reload,
-        log_level=settings.log_level.lower()
+        "main:app",
+        host=core_settings.api_host,
+        port=core_settings.api_port,
+        reload=core_settings.api_reload,
+        log_level=core_settings.log_level.lower()
     ) 
