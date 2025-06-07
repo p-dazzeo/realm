@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body # Added Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select, func
@@ -12,7 +12,8 @@ from modules.upload.models import Project, UploadSession, ProjectFile
 from modules.upload.schemas import (
     ProjectCreate, Project as ProjectSchema, UploadResponse, 
     UploadSession as UploadSessionSchema, ErrorResponse,
-    ProjectSummary, UploadMethod
+    ProjectSummary, UploadMethod,
+    AdditionalProjectFileSchema, AdditionalFileCreateRequest, AdditionalFileUpdateRequest # Added these
 )
 from modules.upload.service import upload_service
 
@@ -220,4 +221,105 @@ async def health_check():
         "status": "healthy",
         "service": "realm-upload-service",
         "timestamp": datetime.now().strftime("%d/%m/%YT/%H:%M:%S")
-    } 
+    }
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# AdditionalProjectFile specific endpoints
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+@router.post(
+    "/projects/{project_id}/additional_files",
+    response_model=AdditionalProjectFileSchema,
+    summary="Upload an additional file for a project",
+    status_code=201 # Indicate resource creation
+)
+async def add_additional_file(
+    project_id: int,
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(None), # Using Form for description alongside File
+    db: AsyncSession = Depends(get_database)
+):
+    # The service function add_additional_file_to_project
+    # was designed to take `description` directly.
+    try:
+        # Ensure project exists before proceeding (optional, service might do this)
+        # project = await upload_service.get_project_by_id(db, project_id) # Assuming such service method exists
+        # if not project:
+        #     raise HTTPException(status_code=404, detail=f"Project with id {project_id} not found.")
+
+        additional_file_record = await upload_service.add_additional_file_to_project(
+            db=db,
+            project_id=project_id,
+            uploaded_file=file,
+            description=description
+        )
+        return additional_file_record
+    except HTTPException as e: # Catch HTTPExceptions from service (like project not found)
+        raise e
+    except Exception as e:
+        logger.error("Failed to add additional file", project_id=project_id, filename=file.filename, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add additional file: {str(e)}")
+
+@router.get(
+    "/projects/{project_id}/additional_files/{additional_file_id}",
+    response_model=AdditionalProjectFileSchema,
+    summary="Get a specific additional file by ID"
+)
+async def get_additional_file_by_id(
+    project_id: int,
+    additional_file_id: int,
+    db: AsyncSession = Depends(get_database)
+):
+    additional_file = await upload_service.get_additional_file(db, project_id, additional_file_id)
+    if not additional_file:
+        raise HTTPException(status_code=404, detail="Additional file not found for this project")
+    return additional_file
+
+@router.put(
+    "/projects/{project_id}/additional_files/{additional_file_id}",
+    response_model=AdditionalProjectFileSchema,
+    summary="Update an additional file's metadata"
+)
+async def update_additional_file_by_id(
+    project_id: int,
+    additional_file_id: int,
+    update_data: AdditionalFileUpdateRequest = Body(...), # Use the schema for request body
+    db: AsyncSession = Depends(get_database)
+):
+    try:
+        updated_file = await upload_service.update_additional_file(
+            db, project_id, additional_file_id, update_data
+        )
+        if not updated_file:
+            # Service returns None if not found, router translates to 404
+            raise HTTPException(status_code=404, detail="Additional file not found or no update performed")
+        return updated_file
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error("Failed to update additional file", project_id=project_id, additional_file_id=additional_file_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update additional file: {str(e)}")
+
+
+@router.delete(
+    "/projects/{project_id}/additional_files/{additional_file_id}",
+    summary="Delete a specific additional file",
+    status_code=200 # Default is 200 for JSONResponse
+)
+async def delete_additional_file_by_id(
+    project_id: int,
+    additional_file_id: int,
+    db: AsyncSession = Depends(get_database)
+):
+    try:
+        success = await upload_service.delete_additional_file(db, project_id, additional_file_id)
+        if not success:
+            # Service returns False if not found, router translates to 404
+            raise HTTPException(status_code=404, detail="Additional file not found or deletion failed")
+        # If service raised an error for file system issues, it would be caught by generic exception handler
+        return JSONResponse(content={"message": "Additional file deleted successfully"}, status_code=200)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error("Failed to delete additional file", project_id=project_id, additional_file_id=additional_file_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete additional file: {str(e)}")
