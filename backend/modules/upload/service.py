@@ -5,20 +5,21 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select # Added this
 from fastapi import UploadFile, HTTPException
 import structlog
-import shutil # Added this
 import zipfile
 import tempfile
 
 from core.config import upload_settings
-from modules.upload.models import Project, ProjectFile, UploadSession, AdditionalProjectFile # Added AdditionalProjectFile
+from modules.upload.models import Project, ProjectFile, UploadSession, AdditionalProjectFile
 from modules.upload.schemas import (
     ProjectCreate,
     ParserRequest, ParserResponse, UploadMethod, UploadStatus, SessionStatus,
-    AdditionalFileUpdateRequest # Added this
+    AdditionalFileUpdateRequest
 )
+from modules.upload.repositories import ProjectRepository, FileRepository, AdditionalFileRepository, UploadSessionRepository
+from shared.services.file_storage import file_storage_service
+from shared.exceptions import ProjectNotFoundException, FileNotFoundException, ParserServiceException, ValidationException
 
 logger = structlog.get_logger()
 
@@ -26,6 +27,7 @@ logger = structlog.get_logger()
 class UploadService:
     def __init__(self):
         self.http_client = httpx.AsyncClient(timeout=upload_settings.parser_service_timeout)
+        self.file_storage = file_storage_service
         
     async def close(self):
         """Close HTTP client"""
@@ -39,14 +41,12 @@ class UploadService:
         """Create a new upload session"""
         expires_at = datetime.utcnow() + timedelta(hours=24)  # 24-hour expiration
         
-        session = UploadSession(
-            upload_method=upload_method,
-            expires_at=expires_at
-        )
+        session_data = {
+            "upload_method": upload_method,
+            "expires_at": expires_at
+        }
         
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
+        session = await UploadSessionRepository.create(db, session_data)
         
         logger.info("Upload session created", session_id=session.session_id)
         return session
@@ -329,18 +329,16 @@ class UploadService:
     ) -> Project:
         """Upload project using direct file storage"""
         # Create project
-        project = Project(
-            name=project_data.name,
-            description=project_data.description,
-            upload_method=UploadMethod.DIRECT,
-            upload_status=UploadStatus.PROCESSING,
-            original_filename=session.session_id,
-            file_size=sum(f.get('size', 0) for f in files)
-        )
+        project_data_dict = {
+            "name": project_data.name,
+            "description": project_data.description,
+            "upload_method": UploadMethod.DIRECT,
+            "upload_status": UploadStatus.PROCESSING,
+            "original_filename": session.session_id,
+            "file_size": sum(f.get('size', 0) for f in files)
+        }
         
-        db.add(project)
-        await db.commit()
-        await db.refresh(project)
+        project = await ProjectRepository.create(db, project_data_dict)
         
         # Process files
         processed_count = 0
@@ -363,6 +361,7 @@ class UploadService:
                 
                 # Update session progress
                 session.processed_files = processed_count
+                await UploadSessionRepository.update(db, session)
                     
             except Exception as e:
                 failed_count += 1
@@ -373,38 +372,25 @@ class UploadService:
                            error=str(e),
                            project_id=project.id)
         
-                # Update final status
+        # Update final status
         session.project_id = project.id
         session.failed_files = failed_count
         
-        if failed_count == 0:
-            session.status = SessionStatus.COMPLETED
+        if processed_count > 0:
             project.upload_status = UploadStatus.COMPLETED
-            logger.info("Project upload completed successfully", 
-                       project_id=project.id,
-                       project_name=project.name,
-                       files_processed=processed_count,
-                       upload_method="direct")
-        elif processed_count > 0:
             session.status = SessionStatus.COMPLETED
-            project.upload_status = UploadStatus.COMPLETED
-            session.warnings = [f"{failed_count} files failed to process"]
-            logger.warning("Project upload completed with some failures", 
-                         project_id=project.id,
-                         project_name=project.name,
-                         files_processed=processed_count,
-                         files_failed=failed_count,
-                         upload_method="direct")
         else:
-            session.status = SessionStatus.FAILED
             project.upload_status = UploadStatus.FAILED
+            session.status = SessionStatus.FAILED
             logger.error("Project upload failed - no files processed", 
                        project_id=project.id,
                        project_name=project.name,
                        files_failed=failed_count,
                        upload_method="direct")
 
-        await db.commit()
+        await ProjectRepository.update(db, project)
+        await UploadSessionRepository.update(db, session)
+        
         logger.info("Database commit completed", 
                    project_id=project.id,
                    session_id=session.session_id)
@@ -490,10 +476,6 @@ class UploadService:
         ext = Path(filename).suffix.lower()
         return ext_to_lang.get(ext)
 
-
-# Global service instance
-upload_service = UploadService()
-
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # AdditionalProjectFile specific methods
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -506,69 +488,51 @@ upload_service = UploadService()
         description: Optional[str]
     ) -> AdditionalProjectFile:
         # 1. Verify project exists
-        project_result = await db.execute(select(Project).where(Project.id == project_id))
-        project = project_result.scalar_one_or_none()
+        project = await ProjectRepository.get_by_id(db, project_id)
         if not project:
-            raise HTTPException(status_code=404, detail=f"Project with id {project_id} not found.")
+            raise ProjectNotFoundException(project_id=project_id)
 
-        # 2. Determine storage path (create project-specific dir if not exists)
-        #    Ensure upload_settings.additional_files_dir is defined in core/config.py
-        project_files_dir = Path(upload_settings.additional_files_dir) / f"project_{project.uuid}" # Use project.uuid for unique folder
-        os.makedirs(project_files_dir, exist_ok=True)
-
-        # Sanitize filename (basic example, consider more robust sanitization)
+        # 2. Use FileStorageService to save the file
+        sub_directory = f"project_{project.uuid}"
         safe_filename = Path(uploaded_file.filename).name
-        file_location = project_files_dir / safe_filename
-
-        # Ensure filename uniqueness if necessary, e.g., by appending a suffix if file_location.exists()
-        # For simplicity, this example overwrites. Consider adding a counter or UUID if overwriting is not desired.
-        # counter = 0
-        # original_stem = file_location.stem
-        # while file_location.exists():
-        #     counter += 1
-        #     file_location = project_files_dir / f"{original_stem}_{counter}{file_location.suffix}"
-        # safe_filename = file_location.name
-
-
-        # 3. Save uploaded_file content
+        
         try:
-            with open(file_location, "wb") as buffer:
-                # Access underlying file object for copyfileobj if available and direct,
-                # otherwise read and write in chunks for compatibility with SpooledTemporaryFile
-                if hasattr(uploaded_file.file, 'file'): # Handles SpooledTemporaryFile from FastAPI
-                    shutil.copyfileobj(uploaded_file.file.file, buffer)
-                else: # Fallback for other file-like objects if necessary
-                    content = await uploaded_file.read()
-                    buffer.write(content)
-            await uploaded_file.seek(0) # Reset cursor for any potential re-reads by FastAPI framework
+            file_location = await self.file_storage.save_file(
+                file=uploaded_file,
+                sub_directory=sub_directory,
+                file_name=safe_filename
+            )
+            
+            # 3. Create AdditionalProjectFile record
+            file_data = {
+                "project_id": project_id,
+                "filename": safe_filename,
+                "file_path": str(file_location),
+                "file_size": file_location.stat().st_size,
+                "description": description
+            }
+
+            additional_file = await AdditionalFileRepository.create(db, file_data)
+            
+            logger.info("Additional file added to project", 
+                      additional_file_id=additional_file.id, 
+                      project_id=project_id, 
+                      filename=safe_filename, 
+                      path=str(file_location))
+            
+            return additional_file
+            
         except Exception as e:
-            logger.error("Failed to save additional file", filename=safe_filename, path=str(file_location), error=str(e))
-            raise HTTPException(status_code=500, detail=f"Could not save file: {safe_filename}. Error: {str(e)}")
-        finally:
-            await uploaded_file.close()
-
-        # 4. Get file size
-        try:
-            file_size = file_location.stat().st_size
-        except FileNotFoundError:
-            logger.error("Failed to get file size, file not found after saving", filename=safe_filename, path=str(file_location))
-            raise HTTPException(status_code=500, detail=f"Could not determine file size for: {safe_filename}.")
-
-
-        # 5. Create AdditionalProjectFile record
-        additional_file = AdditionalProjectFile(
-            project_id=project_id,
-            filename=safe_filename,
-            file_path=str(file_location), # Store absolute path
-            file_size=file_size,
-            description=description
-        )
-
-        db.add(additional_file)
-        await db.commit()
-        await db.refresh(additional_file)
-        logger.info("Additional file added to project", additional_file_id=additional_file.id, project_id=project_id, filename=safe_filename, path=str(file_location))
-        return additional_file
+            logger.error("Failed to add additional file to project", 
+                       project_id=project_id, 
+                       filename=safe_filename, 
+                       error=str(e))
+            if isinstance(e, (ProjectNotFoundException, FileNotFoundException, ParserServiceException, ValidationException)):
+                raise
+            raise ValidationException(
+                detail=f"Could not add file to project: {str(e)}",
+                field_errors={"file": str(e)}
+            )
 
     async def get_additional_file(
         self,
@@ -576,13 +540,13 @@ upload_service = UploadService()
         project_id: int,
         additional_file_id: int
     ) -> Optional[AdditionalProjectFile]:
-        result = await db.execute(
-            select(AdditionalProjectFile).where(
-                AdditionalProjectFile.id == additional_file_id,
-                AdditionalProjectFile.project_id == project_id
+        file = await AdditionalFileRepository.get_by_id(db, additional_file_id, project_id)
+        if not file:
+            raise FileNotFoundException(
+                file_id=additional_file_id,
+                project_id=project_id
             )
-        )
-        return result.scalar_one_or_none()
+        return file
 
     async def update_additional_file(
         self,
@@ -591,9 +555,12 @@ upload_service = UploadService()
         additional_file_id: int,
         data: AdditionalFileUpdateRequest
     ) -> Optional[AdditionalProjectFile]:
-        additional_file = await self.get_additional_file(db, project_id, additional_file_id)
+        additional_file = await AdditionalFileRepository.get_by_id(db, additional_file_id, project_id)
         if not additional_file:
-            return None
+            raise FileNotFoundException(
+                file_id=additional_file_id,
+                project_id=project_id
+            )
 
         update_data = data.model_dump(exclude_unset=True)
 
@@ -604,8 +571,7 @@ upload_service = UploadService()
         # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
 
         if update_data: # Only commit if there was data to update
-            await db.commit()
-            await db.refresh(additional_file)
+            additional_file = await AdditionalFileRepository.update(db, additional_file)
             logger.info("Additional file updated", additional_file_id=additional_file.id, project_id=project_id, changes=update_data)
         else:
             logger.info("No changes detected for additional file update", additional_file_id=additional_file.id, project_id=project_id)
@@ -617,38 +583,34 @@ upload_service = UploadService()
         project_id: int,
         additional_file_id: int
     ) -> bool:
-        additional_file = await self.get_additional_file(db, project_id, additional_file_id)
+        additional_file = await AdditionalFileRepository.get_by_id(db, additional_file_id, project_id)
         if not additional_file:
-            return False # Or raise HTTPException(status_code=404, detail="Additional file not found")
+            raise FileNotFoundException(
+                file_id=additional_file_id,
+                project_id=project_id
+            )
 
         file_path_to_delete = Path(additional_file.file_path)
+        # Store project_uuid before deleting the record to avoid SQLAlchemy relationship access issues
+        project_uuid = additional_file.project.uuid
 
-        # Attempt to delete DB record first or mark for deletion
-        await db.delete(additional_file)
-        await db.commit()
-        logger.info("Additional file record deleted from DB", additional_file_id=additional_file_id, project_id=project_id)
-
-        # Then delete file from filesystem
-        if file_path_to_delete.exists():
+        # Attempt to delete DB record first
+        deleted = await AdditionalFileRepository.delete(db, additional_file_id, project_id)
+        if deleted:
+            logger.info("Additional file record deleted from DB", additional_file_id=additional_file_id, project_id=project_id)
+        
+            # Then delete file from filesystem using FileStorageService
             try:
-                os.remove(file_path_to_delete)
+                self.file_storage.delete_file(file_path_to_delete.name, sub_directory=f"project_{project_uuid}")
                 logger.info("Additional file deleted from filesystem", path=str(file_path_to_delete))
+            except Exception as e:
+                logger.error("Error deleting additional file from filesystem", 
+                           path=str(file_path_to_delete), 
+                           error=str(e))
+                # DB record is already deleted, so we'll still return True
+        
+        return deleted
 
-                # Attempt to remove project-specific directory if empty
-                try:
-                    project_files_dir = file_path_to_delete.parent
-                    if not any(project_files_dir.iterdir()): # Check if directory is empty
-                        os.rmdir(project_files_dir)
-                        logger.info("Empty project-specific additional files directory removed", directory=str(project_files_dir))
-                except OSError as e:
-                    logger.warning("Could not remove project-specific directory or it was not empty", directory=str(project_files_dir), error=str(e))
 
-            except OSError as e:
-                logger.error("Error deleting additional file from filesystem", path=str(file_path_to_delete), error=str(e))
-                # Consider implications: DB record is gone. File system deletion failed.
-                # This might require a cleanup job or manual intervention if critical.
-                # For now, just log the error.
-        else:
-            logger.warning("Additional file not found on filesystem for deletion", path=str(file_path_to_delete))
-
-        return True
+# Global service instance
+upload_service = UploadService()
