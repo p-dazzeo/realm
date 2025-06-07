@@ -11,9 +11,9 @@ from core.dependencies import get_database
 from modules.upload.models import Project, UploadSession, ProjectFile
 from modules.upload.schemas import (
     ProjectCreate, Project as ProjectSchema, UploadResponse, 
-    UploadSession as UploadSessionSchema, ErrorResponse,
+    UploadSession as UploadSessionSchema,
     ProjectSummary, UploadMethod,
-    AdditionalProjectFileSchema, AdditionalFileCreateRequest, AdditionalFileUpdateRequest # Added these
+    AdditionalProjectFileSchema, AdditionalFileUpdateRequest
 )
 from modules.upload.service import upload_service
 

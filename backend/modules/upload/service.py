@@ -17,7 +17,7 @@ from modules.upload.schemas import (
     ParserRequest, ParserResponse, UploadMethod, UploadStatus, SessionStatus,
     AdditionalFileUpdateRequest
 )
-from modules.upload.repositories import ProjectRepository, FileRepository, AdditionalFileRepository, UploadSessionRepository
+from modules.upload.repositories import ProjectRepository, AdditionalFileRepository, UploadSessionRepository
 from shared.services.file_storage import file_storage_service
 from shared.exceptions import ProjectNotFoundException, FileNotFoundException, ParserServiceException, ValidationException
 
@@ -62,17 +62,15 @@ class UploadService:
         """
         logger.info("Starting intelligent project upload", filename=uploaded_file.filename)
         
-        # Create upload session
-        async with db.begin():
-            session = await self.create_upload_session(db, UploadMethod.PARSER)
+        # Create upload session without nested transaction
+        session = await self.create_upload_session(db, UploadMethod.PARSER)
         
         try:
             # First, try to extract and analyze the uploaded file
             extracted_files = await self._extract_project_files(uploaded_file)
             
-            # Update session with file count
-            async with db.begin():
-                session.total_files = len(extracted_files)
+            # Update session with file count without nested transaction
+            session.total_files = len(extracted_files)
             
             # Try parser first if enabled
             if upload_settings.parser_service_enabled:
@@ -90,9 +88,8 @@ class UploadService:
                         error=str(e), session_id=session.session_id
                     )
                     # Update session method and continue with direct upload
-                    async with db.begin():
-                        session.upload_method = UploadMethod.DIRECT
-                        session.errors = [f"Parser failed: {str(e)}"]
+                    session.upload_method = UploadMethod.DIRECT
+                    session.errors = [f"Parser failed: {str(e)}"]
             
             # Fallback to direct upload
             logger.info("Using direct upload", session_id=session.session_id)
@@ -103,10 +100,10 @@ class UploadService:
             return project, session
             
         except Exception as e:
-            async with db.begin():
-                session.status = SessionStatus.FAILED
-                session.errors = session.errors or []
-                session.errors.append(str(e))
+            # Update session status without nested transaction
+            session.status = SessionStatus.FAILED
+            session.errors = session.errors or []
+            session.errors.append(str(e))
             logger.error("Upload failed", error=str(e), session_id=session.session_id)
             raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
     
@@ -301,46 +298,43 @@ class UploadService:
                     detail=f"Parser failed: {parser_response.error}"
                 )
             
-            # Create project record
-            async with db.begin():
-                # Create project
-                project = Project(
-                    name=project_data.name,
-                    description=project_data.description,
-                    upload_method=UploadMethod.PARSER,
-                    upload_status=UploadStatus.PROCESSING,
-                    original_filename=files[0]['filename'] if len(files) == 1 else None,
-                    file_size=sum(f.get('size', 0) for f in files),
-                    parser_response=parser_response.data,
-                    parser_version=parser_response.version
-                )
-                db.add(project)
-                await db.flush()  # Get project ID without committing
-                
-                # Create project files
-                await self._create_project_files_from_parser(
-                    db, project, parser_response.data, files
-                )
-                
-                # Update session
-                session.project_id = project.id
-                session.status = SessionStatus.COMPLETED
-                session.processed_files = len(files)
+            # Create project record without nested transaction
+            # Create project
+            project = Project(
+                name=project_data.name,
+                description=project_data.description,
+                upload_method=UploadMethod.PARSER,
+                upload_status=UploadStatus.PROCESSING,
+                original_filename=files[0]['filename'] if len(files) == 1 else None,
+                file_size=sum(f.get('size', 0) for f in files),
+                parser_response=parser_response.data,
+                parser_version=parser_response.version
+            )
+            db.add(project)
+            await db.flush()  # Get project ID without committing
             
-            # Set final status
-            async with db.begin():
-                project.upload_status = UploadStatus.COMPLETED
+            # Create project files
+            await self._create_project_files_from_parser(
+                db, project, parser_response.data, files
+            )
+            
+            # Update session
+            session.project_id = project.id
+            session.status = SessionStatus.COMPLETED
+            session.processed_files = len(files)
+            
+            # Set final status without nested transaction
+            project.upload_status = UploadStatus.COMPLETED
             
             logger.info("Project created via parser", project_id=project.id)
             return project
             
         except Exception as e:
             logger.error("Parser upload failed", error=str(e))
-            # Update session with failure information
-            async with db.begin():
-                session.status = SessionStatus.FAILED
-                session.errors = session.errors or []
-                session.errors.append(str(e))
+            # Update session with failure information without nested transaction
+            session.status = SessionStatus.FAILED
+            session.errors = session.errors or []
+            session.errors.append(str(e))
             
             if isinstance(e, ParserServiceException):
                 raise
@@ -358,44 +352,41 @@ class UploadService:
     ) -> Project:
         """Upload project using direct file analysis"""
         try:
-            # Create project record with transaction
-            async with db.begin():
-                # Create project
-                project = Project(
-                    name=project_data.name,
-                    description=project_data.description,
-                    upload_method=UploadMethod.DIRECT,
-                    upload_status=UploadStatus.PROCESSING,
-                    original_filename=files[0]['filename'] if len(files) == 1 else None,
-                    file_size=sum(f.get('size', 0) for f in files)
-                )
-                db.add(project)
-                await db.flush()  # Get project ID without committing
-                
-                # Process each file
-                logger.info("Processing files for direct upload", file_count=len(files))
-                for file_data in files:
-                    await self._create_project_file_direct(db, project, file_data)
-                    
-                # Update session
-                session.project_id = project.id
-                session.status = SessionStatus.COMPLETED
-                session.processed_files = len(files)
+            # Create project record without nested transaction
+            # Create project
+            project = Project(
+                name=project_data.name,
+                description=project_data.description,
+                upload_method=UploadMethod.DIRECT,
+                upload_status=UploadStatus.PROCESSING,
+                original_filename=files[0]['filename'] if len(files) == 1 else None,
+                file_size=sum(f.get('size', 0) for f in files)
+            )
+            db.add(project)
+            await db.flush()  # Get project ID without committing
             
-            # Set final status
-            async with db.begin():
-                project.upload_status = UploadStatus.COMPLETED
+            # Process each file
+            logger.info("Processing files for direct upload", file_count=len(files))
+            for file_data in files:
+                await self._create_project_file_direct(db, project, file_data)
+                
+            # Update session
+            session.project_id = project.id
+            session.status = SessionStatus.COMPLETED
+            session.processed_files = len(files)
+            
+            # Set final status without nested transaction
+            project.upload_status = UploadStatus.COMPLETED
             
             logger.info("Project created via direct upload", project_id=project.id)
             return project
             
         except Exception as e:
             logger.error("Direct upload failed", error=str(e))
-            # Update session with failure information
-            async with db.begin():
-                session.status = SessionStatus.FAILED
-                session.errors = session.errors or []
-                session.errors.append(str(e))
+            # Update session with failure information without nested transaction
+            session.status = SessionStatus.FAILED
+            session.errors = session.errors or []
+            session.errors.append(str(e))
             raise ValidationException(
                 detail=f"Direct upload failed: {str(e)}",
                 field_errors={"files": str(e)}
@@ -508,7 +499,8 @@ class UploadService:
                 file_name=safe_filename
             )
             
-            # 3. Create AdditionalProjectFile record within a transaction
+            # 3. Create AdditionalProjectFile record
+            # Remove the nested transaction to avoid conflicts with outer transactions
             file_data = {
                 "project_id": project_id,
                 "filename": safe_filename,
@@ -517,8 +509,8 @@ class UploadService:
                 "description": description
             }
 
-            async with db.begin():
-                additional_file = await AdditionalFileRepository.create(db, file_data)
+            # Remove the nested transaction - use the session without explicitly starting a transaction
+            additional_file = await AdditionalFileRepository.create(db, file_data)
             
             logger.info("Additional file added to project", 
                       additional_file_id=additional_file.id, 
@@ -580,14 +572,14 @@ class UploadService:
         update_data = data.model_dump(exclude_unset=True)
 
         if update_data:  # Only proceed with update if there's data to update
-            async with db.begin():
-                if "description" in update_data:  # Allows setting description to "" or nullifying it if model field is nullable
-                    additional_file.description = update_data["description"]
-                
-                # Add updates for other fields if they become mutable
-                # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
-                
-                additional_file = await AdditionalFileRepository.update(db, additional_file)
+            # Remove nested transaction
+            if "description" in update_data:  # Allows setting description to "" or nullifying it if model field is nullable
+                additional_file.description = update_data["description"]
+            
+            # Add updates for other fields if they become mutable
+            # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
+            
+            additional_file = await AdditionalFileRepository.update(db, additional_file)
             
             logger.info("Additional file updated", additional_file_id=additional_file.id, project_id=project_id, changes=update_data)
         else:
@@ -612,9 +604,8 @@ class UploadService:
         # Store project_uuid before deleting the record to avoid SQLAlchemy relationship access issues
         project_uuid = additional_file.project.uuid
 
-        # Delete the DB record within a transaction
-        async with db.begin():
-            deleted = await AdditionalFileRepository.delete(db, additional_file_id, project_id)
+        # Delete the DB record without an explicit transaction
+        deleted = await AdditionalFileRepository.delete(db, additional_file_id, project_id)
         
         if deleted:
             logger.info("Additional file record deleted from DB", additional_file_id=additional_file_id, project_id=project_id)

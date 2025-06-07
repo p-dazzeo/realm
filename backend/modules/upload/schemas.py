@@ -134,7 +134,6 @@ class AdditionalFileCreateRequest(BaseModel):
 
 class AdditionalFileUpdateRequest(BaseModel):
     description: Optional[str] = Field(None, description="New description for the additional file.")
-    # Add other updatable fields here if any in the future, e.g., filename if allowed
     
     model_config = ConfigDict(
         json_schema_extra={

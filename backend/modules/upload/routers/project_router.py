@@ -154,9 +154,20 @@ async def list_projects(
     else:
         # Use cached repository method for better performance
         logger.info("Using cached project list", skip=skip, limit=limit)
-        projects = await ProjectRepository.list_projects_cached(db, skip=skip, limit=limit)
         
-        # Convert to summaries - this is lightweight and doesn't need caching
+        # Modified: Load projects with their files using selectinload
+        query = (
+            select(Project)
+            .options(selectinload(Project.files))
+            .order_by(Project.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        
+        result = await db.execute(query)
+        projects = list(result.scalars().all())
+        
+        # Convert to summaries - now file count access is safe
         project_summaries = []
         for project in projects:
             file_count = len(project.files) if project.files else 0

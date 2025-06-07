@@ -4,7 +4,7 @@ This module provides Pydantic settings classes for all application configuration
 """
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, ValidationInfo, field_validator, DirectoryPath
+from pydantic import Field, ValidationInfo, field_validator
 from typing import List, Dict, Any, Optional
 import logging
 
