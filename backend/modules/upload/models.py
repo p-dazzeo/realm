@@ -24,6 +24,7 @@ class Project(BaseModel, UUIDMixin):
     
     # Relationships
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
+    additional_files = relationship("AdditionalProjectFile", back_populates="project", cascade="all, delete-orphan")
 
 
 class ProjectFile(BaseModel):
@@ -75,4 +76,19 @@ class UploadSession(BaseModel):
     # Associated project
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     
-    expires_at = Column(DateTime(timezone=True))  # Session expiration 
+    expires_at = Column(DateTime(timezone=True))  # Session expiration
+
+
+class AdditionalProjectFile(BaseModel, UUIDMixin):
+    __tablename__ = "additional_project_files"
+
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+
+    # File metadata
+    filename = Column(String, nullable=False, index=True)
+    file_path = Column(String, nullable=False, index=True)  # Full path where the file is stored
+    file_size = Column(BigInteger)  # Size in bytes
+    description = Column(Text, nullable=True) # Optional description for the file's purpose
+
+    # Relationships
+    project = relationship("Project", back_populates="additional_files")

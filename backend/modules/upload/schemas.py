@@ -58,6 +58,27 @@ class ProjectFile(BaseModel):
     updated_at: Optional[datetime]
 
 
+class AdditionalProjectFileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    uuid: str
+    filename: str
+    file_path: str # Or consider if this should be different for API response, e.g., a download link
+    file_size: Optional[int] = None
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class AdditionalFileCreateRequest(BaseModel):
+    description: Optional[str] = Field(None, description="Optional description for the additional file.")
+
+class AdditionalFileUpdateRequest(BaseModel):
+    description: Optional[str] = Field(None, description="New description for the additional file.")
+    # Add other updatable fields here if any in the future, e.g., filename if allowed
+
+
 class Project(ProjectBase):
     model_config = ConfigDict(from_attributes=True)
     
@@ -72,6 +93,7 @@ class Project(ProjectBase):
     created_at: datetime
     updated_at: Optional[datetime]
     files: List[ProjectFile] = []
+    additional_files: List[AdditionalProjectFileSchema] = []
 
 
 class ProjectSummary(ProjectBase):

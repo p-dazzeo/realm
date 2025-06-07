@@ -5,16 +5,19 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select # Added this
 from fastapi import UploadFile, HTTPException
 import structlog
+import shutil # Added this
 import zipfile
 import tempfile
 
 from core.config import upload_settings
-from modules.upload.models import Project, ProjectFile, UploadSession
+from modules.upload.models import Project, ProjectFile, UploadSession, AdditionalProjectFile # Added AdditionalProjectFile
 from modules.upload.schemas import (
     ProjectCreate,
-    ParserRequest, ParserResponse, UploadMethod, UploadStatus, SessionStatus
+    ParserRequest, ParserResponse, UploadMethod, UploadStatus, SessionStatus,
+    AdditionalFileUpdateRequest # Added this
 )
 
 logger = structlog.get_logger()
@@ -489,4 +492,163 @@ class UploadService:
 
 
 # Global service instance
-upload_service = UploadService() 
+upload_service = UploadService()
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # AdditionalProjectFile specific methods
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    async def add_additional_file_to_project(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        uploaded_file: UploadFile,
+        description: Optional[str]
+    ) -> AdditionalProjectFile:
+        # 1. Verify project exists
+        project_result = await db.execute(select(Project).where(Project.id == project_id))
+        project = project_result.scalar_one_or_none()
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project with id {project_id} not found.")
+
+        # 2. Determine storage path (create project-specific dir if not exists)
+        #    Ensure upload_settings.additional_files_dir is defined in core/config.py
+        project_files_dir = Path(upload_settings.additional_files_dir) / f"project_{project.uuid}" # Use project.uuid for unique folder
+        os.makedirs(project_files_dir, exist_ok=True)
+
+        # Sanitize filename (basic example, consider more robust sanitization)
+        safe_filename = Path(uploaded_file.filename).name
+        file_location = project_files_dir / safe_filename
+
+        # Ensure filename uniqueness if necessary, e.g., by appending a suffix if file_location.exists()
+        # For simplicity, this example overwrites. Consider adding a counter or UUID if overwriting is not desired.
+        # counter = 0
+        # original_stem = file_location.stem
+        # while file_location.exists():
+        #     counter += 1
+        #     file_location = project_files_dir / f"{original_stem}_{counter}{file_location.suffix}"
+        # safe_filename = file_location.name
+
+
+        # 3. Save uploaded_file content
+        try:
+            with open(file_location, "wb") as buffer:
+                # Access underlying file object for copyfileobj if available and direct,
+                # otherwise read and write in chunks for compatibility with SpooledTemporaryFile
+                if hasattr(uploaded_file.file, 'file'): # Handles SpooledTemporaryFile from FastAPI
+                    shutil.copyfileobj(uploaded_file.file.file, buffer)
+                else: # Fallback for other file-like objects if necessary
+                    content = await uploaded_file.read()
+                    buffer.write(content)
+            await uploaded_file.seek(0) # Reset cursor for any potential re-reads by FastAPI framework
+        except Exception as e:
+            logger.error("Failed to save additional file", filename=safe_filename, path=str(file_location), error=str(e))
+            raise HTTPException(status_code=500, detail=f"Could not save file: {safe_filename}. Error: {str(e)}")
+        finally:
+            await uploaded_file.close()
+
+        # 4. Get file size
+        try:
+            file_size = file_location.stat().st_size
+        except FileNotFoundError:
+            logger.error("Failed to get file size, file not found after saving", filename=safe_filename, path=str(file_location))
+            raise HTTPException(status_code=500, detail=f"Could not determine file size for: {safe_filename}.")
+
+
+        # 5. Create AdditionalProjectFile record
+        additional_file = AdditionalProjectFile(
+            project_id=project_id,
+            filename=safe_filename,
+            file_path=str(file_location), # Store absolute path
+            file_size=file_size,
+            description=description
+        )
+
+        db.add(additional_file)
+        await db.commit()
+        await db.refresh(additional_file)
+        logger.info("Additional file added to project", additional_file_id=additional_file.id, project_id=project_id, filename=safe_filename, path=str(file_location))
+        return additional_file
+
+    async def get_additional_file(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        additional_file_id: int
+    ) -> Optional[AdditionalProjectFile]:
+        result = await db.execute(
+            select(AdditionalProjectFile).where(
+                AdditionalProjectFile.id == additional_file_id,
+                AdditionalProjectFile.project_id == project_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_additional_file(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        additional_file_id: int,
+        data: AdditionalFileUpdateRequest
+    ) -> Optional[AdditionalProjectFile]:
+        additional_file = await self.get_additional_file(db, project_id, additional_file_id)
+        if not additional_file:
+            return None
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        if "description" in update_data: # Allows setting description to "" or nullifying it if model field is nullable
+            additional_file.description = update_data["description"]
+
+        # Add updates for other fields if they become mutable
+        # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
+
+        if update_data: # Only commit if there was data to update
+            await db.commit()
+            await db.refresh(additional_file)
+            logger.info("Additional file updated", additional_file_id=additional_file.id, project_id=project_id, changes=update_data)
+        else:
+            logger.info("No changes detected for additional file update", additional_file_id=additional_file.id, project_id=project_id)
+        return additional_file
+
+    async def delete_additional_file(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        additional_file_id: int
+    ) -> bool:
+        additional_file = await self.get_additional_file(db, project_id, additional_file_id)
+        if not additional_file:
+            return False # Or raise HTTPException(status_code=404, detail="Additional file not found")
+
+        file_path_to_delete = Path(additional_file.file_path)
+
+        # Attempt to delete DB record first or mark for deletion
+        await db.delete(additional_file)
+        await db.commit()
+        logger.info("Additional file record deleted from DB", additional_file_id=additional_file_id, project_id=project_id)
+
+        # Then delete file from filesystem
+        if file_path_to_delete.exists():
+            try:
+                os.remove(file_path_to_delete)
+                logger.info("Additional file deleted from filesystem", path=str(file_path_to_delete))
+
+                # Attempt to remove project-specific directory if empty
+                try:
+                    project_files_dir = file_path_to_delete.parent
+                    if not any(project_files_dir.iterdir()): # Check if directory is empty
+                        os.rmdir(project_files_dir)
+                        logger.info("Empty project-specific additional files directory removed", directory=str(project_files_dir))
+                except OSError as e:
+                    logger.warning("Could not remove project-specific directory or it was not empty", directory=str(project_files_dir), error=str(e))
+
+            except OSError as e:
+                logger.error("Error deleting additional file from filesystem", path=str(file_path_to_delete), error=str(e))
+                # Consider implications: DB record is gone. File system deletion failed.
+                # This might require a cleanup job or manual intervention if critical.
+                # For now, just log the error.
+        else:
+            logger.warning("Additional file not found on filesystem for deletion", path=str(file_path_to_delete))
+
+        return True
