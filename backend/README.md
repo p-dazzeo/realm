@@ -9,24 +9,6 @@ A FastAPI-based backend service for the REALM Legacy Codebase Documentation Plat
 - PostgreSQL 14+
 - [uv](https://docs.astral.sh/uv/) package manager
 
-### Setup
-```bash
-# 1. Clone and navigate
-cd backend
-
-# 2. Install dependencies
-uv sync
-
-# 3. Setup database
-createdb realm_db
-
-# 4. Configure environment
-cp .env.example .env
-# Edit .env with your database URL and settings
-
-# 5. Run the application
-uv run python main.py
-```
 
 API Documentation: `http://localhost:8000/docs`
 
@@ -42,8 +24,8 @@ REALM backend features a **modular architecture** with feature-based modules and
                                ▼
                     ┌──────────────────┐
                     │ Module Services  │
-                    │ Upload │Projects │
-                    │ Chat   │GenDoc   │ (Planned)
+                    │ Upload (Project Handling) │
+                    │ Chat, GenDoc (Planned)    │
                     └──────────────────┘
 ```
 
@@ -51,7 +33,7 @@ REALM backend features a **modular architecture** with feature-based modules and
 
 - **Core Infrastructure**: Configuration, database, dependencies
 - **Upload Module**: Intelligent file upload with parser integration  
-- **Projects Module**: ✅ Enhanced project management, collaboration, templates
+- **Project Management**: (Currently, basic project creation and management are integrated within the Upload Module. Advanced features like templates and collaboration are planned for a future dedicated Projects Module.)
 - **Chat Module**: 🔄 LLM integration (Planned)
 - **GenDoc Module**: 🔄 Documentation generation (Planned)
 - **Shared Components**: Base models, utilities, schemas
@@ -59,77 +41,312 @@ REALM backend features a **modular architecture** with feature-based modules and
 ## 📊 Database Schema
 
 ### Projects
-Stores project metadata, upload information, and parser responses
+Stores project metadata, upload information, and parser responses.
 ```sql
-- id, uuid, name, description
-- upload_method (parser/direct), upload_status
-- parser_response (JSONB), parser_version
-- file metadata (original_filename, file_size)
-- timestamps
+- id, uuid, created_at, updated_at
+- name, description
+- upload_method, upload_status
+- original_filename, file_size
+- parser_response, parser_version
 ```
 
 ### Project Files
-Individual file storage with content and metadata
+Individual file storage with content and metadata.
 ```sql
-- project_id (FK), filename, file_path, relative_path
-- content, content_hash, file_size
-- parsed_data (JSONB from parser)
-- language detection, LOC, is_binary flag
-- timestamps
+- id, created_at, updated_at
+- project_id (FK)
+- filename, file_path, relative_path, file_extension, file_size
+- content, content_hash
+- parsed_data
+- language, loc, is_binary
 ```
 
 ### Upload Sessions
-Progress tracking and error collection
+Progress tracking and error collection for uploads.
 ```sql
-- session_id (UUID), status, upload_method
-- progress counters (total/processed/failed files)
-- errors and warnings (JSON arrays)
-- project_id (FK), expiration
+- id, created_at, updated_at
+- session_id
+- status, upload_method
+- total_files, processed_files, failed_files
+- errors, warnings
+- project_id (FK), expires_at
+```
+
+### Additional Project Files
+Stores supplementary files associated with a project, such as documentation, configuration files, or datasets.
+```sql
+- id, uuid, created_at, updated_at
+- project_id (FK)
+- filename, file_path, file_size
+- description
 ```
 
 ## 🔌 API Endpoints
 
 ### Upload Module
+
+**Upload Project**
 ```http
-POST   /api/v1/upload/project           # Upload project (ZIP/single file)
-GET    /api/v1/upload/session/{id}      # Get upload session status
-GET    /api/v1/upload/projects          # List projects (paginated)
-GET    /api/v1/upload/projects/{id}     # Get project details
-DELETE /api/v1/upload/projects/{id}     # Delete project
-POST   /api/v1/upload/test-parser       # Test parser service connection
-GET    /api/v1/upload/health            # Upload module health check
+POST   /api/v1/upload/project
 ```
+Uploads a project (ZIP archive or single file) using intelligent method selection (parser first, then direct fallback).
+- Request: `multipart/form-data`
+  - `project_name: str` (form data)
+  - `project_description: Optional[str]` (form data)
+  - `file: UploadFile` (file data)
+- Response: `UploadResponse`
+  ```json
+  {
+    "success": true,
+    "session_id": "sess_12345abcde",
+    "project_id": 1,
+    "upload_method": "parser",
+    "message": "Project uploaded successfully",
+    "warnings": ["One file was skipped due to unsupported extension"]
+  }
+  ```
 
-### Projects Module ✅
+**Get Upload Session Status**
 ```http
-# Templates
-POST   /api/v1/projects/templates       # Create project template
-GET    /api/v1/projects/templates       # List templates with filtering
-GET    /api/v1/projects/templates/{id}  # Get specific template
-
-# Enhanced Projects
-POST   /api/v1/projects/                # Create enhanced project
-GET    /api/v1/projects/                # Search projects with advanced filtering
-GET    /api/v1/projects/{id}            # Get project with relationships
-PUT    /api/v1/projects/{id}            # Update project
-
-# Collaboration
-POST   /api/v1/projects/{id}/collaborators        # Add collaborator
-GET    /api/v1/projects/{id}/collaborators        # List collaborators
-PUT    /api/v1/projects/collaborators/{id}        # Update collaborator
-DELETE /api/v1/projects/{id}/collaborators/{uid}  # Remove collaborator
-
-# Settings & Analytics
-GET    /api/v1/projects/{id}/settings    # Get project settings
-PUT    /api/v1/projects/{id}/settings    # Update project settings
-GET    /api/v1/projects/{id}/analytics   # Get project analytics
-
-# Versioning & Export
-POST   /api/v1/projects/{id}/versions    # Create project version
-GET    /api/v1/projects/{id}/versions    # List project versions
-POST   /api/v1/projects/{id}/export      # Export project
-GET    /api/v1/projects/health           # Projects module health check
+GET    /api/v1/upload/session/{session_id}
 ```
+Retrieves the status and progress of an upload session.
+- Path Parameter: `session_id: str`
+- Response: `UploadSessionSchema`
+  ```json
+  {
+    "id": 1,
+    "session_id": "sess_12345abcde",
+    "status": "completed",
+    "upload_method": "parser",
+    "total_files": 10,
+    "processed_files": 9,
+    "failed_files": 1,
+    "errors": ["Error parsing file XYZ.CBL: Invalid syntax at line 42"],
+    "warnings": ["File ABC.CPY contains deprecated COBOL syntax"],
+    "project_id": 1,
+    "created_at": "2023-01-15T10:25:00Z",
+    "updated_at": "2023-01-15T10:35:00Z",
+    "expires_at": "2023-01-16T10:25:00Z"
+  }
+  ```
+
+**List Projects**
+```http
+GET    /api/v1/upload/projects
+```
+Lists all projects with pagination and filtering.
+- Query Parameters:
+  - `skip: int = 0`
+  - `limit: int = 50`
+  - `upload_method: Optional[UploadMethod] = None` (e.g., "parser" or "direct")
+- Response: `List[ProjectSummary]`
+  ```json
+  [
+    {
+      "id": 1,
+      "name": "Payroll System",
+      "description": "Legacy payroll processing system",
+      "uuid": "12345678-abcd-1234-efgh-1234567890ab",
+      "upload_method": "parser",
+      "upload_status": "completed",
+      "file_count": 15,
+      "total_size": 5250000,
+      "created_at": "2023-01-15T10:30:00Z"
+    }
+  ]
+  ```
+
+**Get Project Details**
+```http
+GET    /api/v1/upload/projects/{project_id}
+```
+Gets a specific project, optionally including its files.
+- Path Parameter: `project_id: int`
+- Query Parameter: `include_files: bool = True`
+- Response: `ProjectSchema`
+  ```json
+  {
+    "id": 1,
+    "name": "Payroll System",
+    "description": "Legacy payroll processing system",
+    "uuid": "12345678-abcd-1234-efgh-1234567890ab",
+    "upload_method": "parser",
+    "upload_status": "completed",
+    "original_filename": "payroll_system.zip",
+    "file_size": 5250000,
+    "parser_response": {"summary": "10 COBOL programs, 5 copybooks"},
+    "parser_version": "1.2.0",
+    "created_at": "2023-01-15T10:30:00Z",
+    "updated_at": "2023-01-15T10:35:25Z",
+    "files": [
+      {
+        "id": 1,
+        "filename": "PAYROLL.CBL",
+        "file_path": "src/PAYROLL.CBL",
+        "relative_path": "src/PAYROLL.CBL",
+        "file_extension": ".CBL",
+        "file_size": 12500,
+        "content": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. PAYROLL.\n       ...",
+        "content_hash": "a1b2c3d4e5f6...",
+        "parsed_data": {"variables": ["EMPLOYEE-ID", "SALARY"], "paragraphs": ["CALCULATE-SALARY"]},
+        "language": "cobol",
+        "loc": 150,
+        "is_binary": false,
+        "created_at": "2023-01-15T12:30:45Z",
+        "updated_at": "2023-01-15T14:20:15Z"
+      }
+    ],
+    "additional_files": []
+  }
+  ```
+
+**Delete Project**
+```http
+DELETE /api/v1/upload/projects/{project_id}
+```
+Deletes a project and all its associated files.
+- Path Parameter: `project_id: int`
+- Response:
+  ```json
+  {
+    "message": "Project '[project_name]' deleted successfully"
+  }
+  ```
+
+**Test Parser Service Connection**
+```http
+POST   /api/v1/upload/test-parser
+```
+Tests if the external parser service is available and responsive.
+- Response (Success):
+  ```json
+  {
+    "parser_available": true,
+    "parser_url": "http://localhost:8001",
+    "status": "healthy"
+  }
+  ```
+- Response (Failure - Unhealthy):
+  ```json
+  {
+    "parser_available": false,
+    "parser_url": "http://localhost:8001",
+    "status": "unhealthy (status: 503)"
+  }
+  ```
+- Response (Failure - Error):
+  ```json
+  {
+    "parser_available": false,
+    "parser_url": "http://localhost:8001",
+    "status": "error: Connection refused"
+  }
+  ```
+
+**Upload Module Health Check**
+```http
+GET    /api/v1/upload/health
+```
+Provides a health check for the upload module.
+- Response:
+  ```json
+  {
+    "status": "healthy",
+    "service": "realm-upload-service",
+    "timestamp": "15/01/2023Y10:30:00" 
+  }
+  ```
+  *(Timestamp is an example, actual value will vary)*
+
+**Upload Additional File for Project**
+```http
+POST   /api/v1/upload/projects/{project_id}/additional_files
+```
+Uploads an additional file (e.g., documentation, configuration) for a specific project.
+- Path Parameter: `project_id: int`
+- Request: `multipart/form-data`
+  - `file: UploadFile` (file data)
+  - `description: Optional[str]` (form data, optional)
+- Response: `AdditionalProjectFileSchema`
+  ```json
+  {
+    "id": 2,
+    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "filename": "requirements.docx",
+    "file_path": "/storage/additional_files/project_12345/requirements.docx",
+    "file_size": 2500000,
+    "description": "Project requirements document",
+    "created_at": "2023-01-16T09:45:30Z",
+    "updated_at": "2023-01-16T09:45:30Z"
+  }
+  ```
+
+**Get Specific Additional File**
+```http
+GET    /api/v1/upload/projects/{project_id}/additional_files/{additional_file_id}
+```
+Retrieves a specific additional file by its ID, associated with a project.
+- Path Parameters:
+  - `project_id: int`
+  - `additional_file_id: int`
+- Response: `AdditionalProjectFileSchema`
+  ```json
+  {
+    "id": 2,
+    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "filename": "requirements.docx",
+    "file_path": "/storage/additional_files/project_12345/requirements.docx",
+    "file_size": 2500000,
+    "description": "Project requirements document",
+    "created_at": "2023-01-16T09:45:30Z",
+    "updated_at": "2023-01-16T09:45:30Z"
+  }
+  ```
+
+**Update Additional File Metadata**
+```http
+PUT    /api/v1/upload/projects/{project_id}/additional_files/{additional_file_id}
+```
+Updates the metadata (e.g., description) of an additional file.
+- Path Parameters:
+  - `project_id: int`
+  - `additional_file_id: int`
+- Request Body: `AdditionalFileUpdateRequest`
+  ```json
+  {
+    "description": "Updated technical documentation"
+  }
+  ```
+- Response: `AdditionalProjectFileSchema`
+  ```json
+  {
+    "id": 2,
+    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "filename": "requirements.docx",
+    "file_path": "/storage/additional_files/project_12345/requirements.docx",
+    "file_size": 2500000,
+    "description": "Updated technical documentation",
+    "created_at": "2023-01-16T09:45:30Z",
+    "updated_at": "2023-01-16T10:00:00Z" 
+  }
+  ```
+  *(updated_at is an example, actual value will vary)*
+
+**Delete Specific Additional File**
+```http
+DELETE /api/v1/upload/projects/{project_id}/additional_files/{additional_file_id}
+```
+Deletes a specific additional file associated with a project.
+- Path Parameters:
+  - `project_id: int`
+  - `additional_file_id: int`
+- Response:
+  ```json
+  {
+    "message": "Additional file deleted successfully"
+  }
+  ```
 
 ### System
 ```http
@@ -187,18 +404,12 @@ backend/
 │   ├── schemas/            # Common schemas
 │   └── utils/              # Shared utilities
 ├── modules/                 # Feature modules
-│   ├── upload/             # Upload functionality
-│   │   ├── models.py       # Upload-specific models
-│   │   ├── schemas.py      # Upload schemas
-│   │   ├── service.py      # Upload business logic
-│   │   ├── router.py       # Upload API endpoints
-│   │   └── parsers/        # Parser implementations
-│   └── projects/           # ✅ Enhanced project management
-│       ├── models.py       # Project templates, collaboration, etc.
-│       ├── schemas.py      # Project management schemas
-│       ├── service.py      # Project business logic
-│       ├── router.py       # Project API endpoints
-│       └── README.md       # Projects module documentation
+│   └── upload/             # Upload functionality
+│       ├── models.py       # Upload-specific models
+│       ├── schemas.py      # Upload schemas
+│       ├── service.py      # Upload business logic
+│       ├── router.py       # Upload API endpoints
+│       └── parsers/        # Parser implementations
 ├── integrations/           # External service integrations
 ├── main.py                 # Application entry point
 ├── pyproject.toml          # Dependencies and project config
@@ -268,7 +479,7 @@ Follow the established patterns from the upload and projects modules:
 
 ### Current Modules
 - ✅ **Upload Module**: File upload with parser integration
-- ✅ **Projects Module**: Enhanced project management with collaboration
+- 🔄 **Projects Module**: Advanced features like collaboration and templates are planned. Basic project functionalities are part of the Upload Module.
 - 🔄 **Chat Module**: LLM integration (Planned)
 - 🔄 **GenDoc Module**: Documentation generation (Planned)
 
