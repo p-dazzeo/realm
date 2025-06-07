@@ -31,9 +31,7 @@ const Generate = () => {
   const [documentationStyle, setDocumentationStyle] = useState('');
   const [detailLevel, setDetailLevel] = useState('');
   const [sections, setSections] = useState<DocumentationSection[]>([
-    { id: '1', title: 'Project Overview', description: 'Provide a high-level overview of the project architecture and purpose' },
-    { id: '2', title: 'Setup Instructions', description: 'Include installation steps, dependencies, and configuration requirements' },
-    { id: '3', title: 'Code Structure', description: 'Explain the main directories, files, and their relationships' },
+    { id: '1', title: 'Functional Overview', description: 'Describe the key functionalities and features of the project.' },
   ]);
 
   const projects = [
@@ -58,13 +56,13 @@ const Generate = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">Generate Documentation</h1>
-        <p className="text-muted-foreground">Define what you want to include in your documentation</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Generate Documentation</h1>
+        <p className="text-gray-600">Define what you want to include in your documentation</p>
       </div>
 
-      <Card className="shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Project Configuration</CardTitle>
           <CardDescription>Select the project and define the sections for your documentation.</CardDescription>
@@ -90,8 +88,8 @@ const Generate = () => {
           {/* Documentation Sections */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-foreground">Documentation Sections</h2>
-              <Button onClick={addSection} size="sm">
+              <h2 className="text-lg font-semibold text-gray-900">Documentation Sections</h2>
+              <Button onClick={addSection} size="sm" variant="default">
                 <Plus className="w-4 h-4 mr-1" />
                 Add Section
               </Button>
@@ -132,9 +130,9 @@ const Generate = () => {
 
           {/* Generation Options */}
           <div className="border-t pt-6">
-            <div className="flex items-center space-x-3 mb-4"> {/* Reduced space-x for closer icon-title */}
-              <Settings className="w-5 h-5 text-muted-foreground" /> {/* Increased icon color intensity */}
-              <h3 className="text-base font-medium text-foreground">Generation Options</h3> {/* Adjusted text size */}
+            <div className="flex items-center space-x-3 mb-4">
+              <Settings className="w-5 h-5 text-gray-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Generation Options</h3>
             </div>
             
             <div className="grid md:grid-cols-2 gap-4">
