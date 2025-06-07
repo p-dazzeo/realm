@@ -5,7 +5,7 @@ This service abstracts file storage operations from the business logic.
 import os
 import shutil
 from pathlib import Path
-from typing import Optional, Union, BinaryIO, List
+from typing import Optional, Union, List
 from fastapi import UploadFile
 import structlog
 
