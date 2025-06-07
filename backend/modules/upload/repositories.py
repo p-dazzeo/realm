@@ -3,14 +3,15 @@ Database repositories for the upload module.
 Repositories handle database operations and queries.
 """
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 from sqlalchemy.orm import selectinload
+from shared.exceptions import DatabaseException, ProjectNotFoundException, FileNotFoundException
+from shared.utils.cache import cached
 
 from modules.upload.models import Project, ProjectFile, UploadSession, AdditionalProjectFile
 from modules.upload.schemas import UploadStatus
-from shared.exceptions import DatabaseException, ProjectNotFoundException, FileNotFoundException
 
 logger = structlog.get_logger()
 
@@ -40,6 +41,24 @@ class ProjectRepository:
                 operation="get_by_id",
                 entity="Project"
             )
+    
+    @staticmethod
+    @cached(ttl=300, key_prefix="project")
+    async def get_by_id_cached(db: AsyncSession, project_id: int) -> Optional[Project]:
+        """
+        Get a project by ID with caching.
+        
+        This method caches results for 5 minutes to reduce database load.
+        Use this method for read-only operations where real-time data is not critical.
+        
+        Args:
+            db: Database session
+            project_id: ID of the project to retrieve
+            
+        Returns:
+            Project object if found, None otherwise
+        """
+        return await ProjectRepository.get_by_id(db, project_id)
     
     @staticmethod
     async def get_by_id_with_relations(
@@ -108,10 +127,33 @@ class ProjectRepository:
             )
     
     @staticmethod
+    @cached(ttl=300, key_prefix="project")
+    async def get_by_uuid_cached(db: AsyncSession, uuid: str) -> Optional[Project]:
+        """
+        Get a project by UUID with caching.
+        
+        This method caches results for 5 minutes to reduce database load.
+        Use this method for read-only operations where real-time data is not critical.
+        
+        Args:
+            db: Database session
+            uuid: UUID of the project to retrieve
+            
+        Returns:
+            Project object if found, None otherwise
+        """
+        return await ProjectRepository.get_by_uuid(db, uuid)
+    
+    @staticmethod
     async def list_projects(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Project]:
         """List all projects with pagination."""
         try:
-            result = await db.execute(select(Project).offset(skip).limit(limit))
+            result = await db.execute(
+                select(Project)
+                .order_by(Project.created_at.desc())
+                .offset(skip)
+                .limit(limit)
+            )
             return list(result.scalars().all())
         except Exception as e:
             logger.error("Database error while listing projects", 
@@ -119,11 +161,59 @@ class ProjectRepository:
                        limit=limit, 
                        error=str(e))
             raise DatabaseException(
-                detail="Error listing projects",
+                detail=f"Error listing projects",
                 operation="list_projects",
-                entity_type="Project",
-                original_error=e
+                entity="Project"
             )
+    
+    @staticmethod
+    @cached(ttl=60, key_prefix="project_list")  # Shorter TTL for lists
+    async def list_projects_cached(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Project]:
+        """
+        List all projects with pagination and caching.
+        
+        This method caches results for 1 minute (shorter than individual entities)
+        since lists can change more frequently.
+        
+        Args:
+            db: Database session
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of Project objects
+        """
+        return await ProjectRepository.list_projects(db, skip, limit)
+    
+    @staticmethod
+    async def get_project_count(db: AsyncSession) -> int:
+        """Get the total count of projects."""
+        try:
+            result = await db.execute(select(func.count(Project.id)))
+            return result.scalar_one()
+        except Exception as e:
+            logger.error("Database error while getting project count", error=str(e))
+            raise DatabaseException(
+                detail="Error counting projects",
+                operation="get_project_count",
+                entity="Project"
+            )
+    
+    @staticmethod
+    @cached(ttl=60, key_prefix="project_count")
+    async def get_project_count_cached(db: AsyncSession) -> int:
+        """
+        Get the total count of projects with caching.
+        
+        This method caches the count for 1 minute.
+        
+        Args:
+            db: Database session
+            
+        Returns:
+            Total count of projects
+        """
+        return await ProjectRepository.get_project_count(db)
     
     @staticmethod
     async def create(db: AsyncSession, project_data: Dict[str, Any]) -> Project:

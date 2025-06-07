@@ -12,6 +12,7 @@ from datetime import datetime
 
 from core.dependencies import get_database
 from modules.upload.models import Project, UploadSession, ProjectFile
+from modules.upload.repositories import ProjectRepository
 from modules.upload.schemas import (
     ProjectCreate, Project as ProjectSchema, UploadResponse,
     UploadSession as UploadSessionSchema, ErrorResponse,
@@ -99,67 +100,114 @@ async def list_projects(
     skip: int = 0,
     limit: int = 50,
     upload_method: Optional[UploadMethod] = None,
+    use_cache: bool = True,
     db: AsyncSession = Depends(get_database)
 ):
-    """List all projects with pagination and filtering"""
-    query = (
-        select(
-            Project,
-            func.count(ProjectFile.id).label("file_count")
+    """
+    List all projects with pagination and filtering.
+    
+    Args:
+        skip: Number of records to skip (pagination)
+        limit: Maximum number of records to return
+        upload_method: Filter by upload method
+        use_cache: Whether to use cached results (default: True)
+        db: Database session
+    """
+    if upload_method or not use_cache:
+        # If filtering or cache is disabled, use the non-cached implementation
+        query = (
+            select(
+                Project,
+                func.count(ProjectFile.id).label("file_count")
+            )
+            .outerjoin(ProjectFile, Project.id == ProjectFile.project_id)
         )
-        .outerjoin(ProjectFile, Project.id == ProjectFile.project_id)
-    )
-    
-    if upload_method:
-        query = query.where(Project.upload_method == upload_method.value)
-    
-    # Apply group_by before offset, limit, and order_by that refer to Project columns
-    query = query.group_by(Project.id) # Group by all necessary Project columns for DB compatibility
-                                     # For most ORM cases with PostgreSQL, Project.id is enough.
+        
+        if upload_method:
+            query = query.where(Project.upload_method == upload_method.value)
+        
+        # Apply group_by before offset, limit, and order_by that refer to Project columns
+        query = query.group_by(Project.id) # Group by all necessary Project columns for DB compatibility
+                                         # For most ORM cases with PostgreSQL, Project.id is enough.
 
-    query = query.order_by(Project.created_at.desc()).offset(skip).limit(limit)
-    
-    result = await db.execute(query)
-    projects_and_counts = result.all() # list of Row objects, (Project_instance, count_value)
-    
-    project_summaries = []
-    for project_obj, count_val in projects_and_counts:
-        summary = ProjectSummary(
-            id=project_obj.id,
-            uuid=project_obj.uuid,
-            name=project_obj.name,
-            description=project_obj.description,
-            upload_method=UploadMethod(project_obj.upload_method),
-            upload_status=project_obj.upload_status,
-            file_count=count_val,
-            total_size=project_obj.file_size or 0,
-            created_at=project_obj.created_at
-        )
-        project_summaries.append(summary)
-    
-    return project_summaries
+        query = query.order_by(Project.created_at.desc()).offset(skip).limit(limit)
+        
+        result = await db.execute(query)
+        projects_and_counts = result.all() # list of Row objects, (Project_instance, count_value)
+        
+        project_summaries = []
+        for project_obj, count_val in projects_and_counts:
+            summary = ProjectSummary(
+                id=project_obj.id,
+                uuid=project_obj.uuid,
+                name=project_obj.name,
+                description=project_obj.description,
+                upload_method=UploadMethod(project_obj.upload_method),
+                upload_status=project_obj.upload_status,
+                file_count=count_val,
+                total_size=project_obj.file_size or 0,
+                created_at=project_obj.created_at
+            )
+            project_summaries.append(summary)
+        
+        return project_summaries
+    else:
+        # Use cached repository method for better performance
+        logger.info("Using cached project list", skip=skip, limit=limit)
+        projects = await ProjectRepository.list_projects_cached(db, skip=skip, limit=limit)
+        
+        # Convert to summaries - this is lightweight and doesn't need caching
+        project_summaries = []
+        for project in projects:
+            file_count = len(project.files) if project.files else 0
+            summary = ProjectSummary(
+                id=project.id,
+                uuid=project.uuid,
+                name=project.name,
+                description=project.description,
+                upload_method=UploadMethod(project.upload_method),
+                upload_status=project.upload_status,
+                file_count=file_count,
+                total_size=project.file_size or 0,
+                created_at=project.created_at
+            )
+            project_summaries.append(summary)
+        
+        return project_summaries
 
 
 @router.get("/projects/{project_id}", response_model=ProjectSchema)
 async def get_project(
     project_id: int,
     include_files: bool = True,
+    use_cache: bool = True,
     db: AsyncSession = Depends(get_database)
 ):
-    """Get a specific project with optional file content"""
-    query = select(Project).where(Project.id == project_id)
-
-    if include_files:
-        # Explicitly load the relationships to avoid lazy loading during serialization
-        query = query.options(
-            selectinload(Project.files),
-            selectinload(Project.additional_files)
-        )
-    else:
-        query = query.options(noload(Project.files), noload(Project.additional_files))
+    """
+    Get a specific project with optional file content.
     
-    result = await db.execute(query)
-    project = result.scalar_one_or_none()
+    Args:
+        project_id: ID of the project to retrieve
+        include_files: Whether to include file and additional_file relationships
+        use_cache: Whether to use cached results (default: True)
+        db: Database session
+    """
+    project = None
+    
+    if use_cache and include_files:
+        # Use cached version for read-only operations with full relationships
+        logger.info("Using cached project retrieval", project_id=project_id)
+        project = await ProjectRepository.get_by_id_cached(db, project_id)
+    elif include_files:
+        # Use standard version with relationships
+        project = await ProjectRepository.get_by_id(db, project_id)
+    else:
+        # Use specific relation loading method
+        project = await ProjectRepository.get_by_id_with_relations(
+            db, project_id, 
+            load_files=include_files, 
+            load_additional_files=include_files
+        )
     
     if not project:
         raise ProjectNotFoundException(project_id=project_id)
