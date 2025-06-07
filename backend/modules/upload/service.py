@@ -63,15 +63,16 @@ class UploadService:
         logger.info("Starting intelligent project upload", filename=uploaded_file.filename)
         
         # Create upload session
-        session = await self.create_upload_session(db, UploadMethod.PARSER)
+        async with db.begin():
+            session = await self.create_upload_session(db, UploadMethod.PARSER)
         
         try:
             # First, try to extract and analyze the uploaded file
             extracted_files = await self._extract_project_files(uploaded_file)
             
             # Update session with file count
-            session.total_files = len(extracted_files)
-            await db.commit()
+            async with db.begin():
+                session.total_files = len(extracted_files)
             
             # Try parser first if enabled
             if upload_settings.parser_service_enabled:
@@ -89,9 +90,9 @@ class UploadService:
                         error=str(e), session_id=session.session_id
                     )
                     # Update session method and continue with direct upload
-                    session.upload_method = UploadMethod.DIRECT
-                    session.errors = [f"Parser failed: {str(e)}"]
-                    await db.commit()
+                    async with db.begin():
+                        session.upload_method = UploadMethod.DIRECT
+                        session.errors = [f"Parser failed: {str(e)}"]
             
             # Fallback to direct upload
             logger.info("Using direct upload", session_id=session.session_id)
@@ -102,10 +103,10 @@ class UploadService:
             return project, session
             
         except Exception as e:
-            session.status = SessionStatus.FAILED
-            session.errors = session.errors or []
-            session.errors.append(str(e))
-            await db.commit()
+            async with db.begin():
+                session.status = SessionStatus.FAILED
+                session.errors = session.errors or []
+                session.errors.append(str(e))
             logger.error("Upload failed", error=str(e), session_id=session.session_id)
             raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
     
@@ -263,62 +264,90 @@ class UploadService:
         project_data: ProjectCreate,
         files: List[Dict[str, Any]]
     ) -> Project:
-        """Upload project using external parser service"""
-        # Prepare request for parser
-        parser_request = ParserRequest(
-            project_name=project_data.name,
-            files=files
-        )
+        """Upload project using parser service for analysis"""
+        if not upload_settings.parser_service_enabled:
+            raise ParserServiceException(detail="Parser service is disabled")
         
         try:
+            # Prepare data for parser
+            parser_request = ParserRequest(
+                project_name=project_data.name,
+                files=[{
+                    'filename': f['filename'],
+                    'path': f['relative_path'],
+                    'content': f['content'],
+                    'size': f.get('size', 0)
+                } for f in files]
+            )
+            
             # Call parser service
+            logger.info("Calling parser service", project_name=project_data.name)
             response = await self.http_client.post(
                 f"{upload_settings.parser_service_url}/parse",
-                json=parser_request.model_dump()
+                json=parser_request.model_dump(),
+                timeout=upload_settings.parser_service_timeout
             )
-            response.raise_for_status()
             
+            if response.status_code != 200:
+                raise ParserServiceException(
+                    detail=f"Parser service error: {response.text}"
+                )
+            
+            # Process parser response
             parser_response = ParserResponse(**response.json())
             
             if not parser_response.success:
-                raise Exception(f"Parser failed: {parser_response.error}")
+                raise ParserServiceException(
+                    detail=f"Parser failed: {parser_response.error}"
+                )
             
-            # Create project with parser data
-            project = Project(
-                name=project_data.name,
-                description=project_data.description,
-                upload_method=UploadMethod.PARSER,
-                upload_status=UploadStatus.PROCESSING,
-                original_filename=session.session_id,  # Use session ID as reference
-                file_size=sum(f.get('size', 0) for f in files),
-                parser_response=parser_response.data,
-                parser_version=parser_response.version
-            )
+            # Create project record
+            async with db.begin():
+                # Create project
+                project = Project(
+                    name=project_data.name,
+                    description=project_data.description,
+                    upload_method=UploadMethod.PARSER,
+                    upload_status=UploadStatus.PROCESSING,
+                    original_filename=files[0]['filename'] if len(files) == 1 else None,
+                    file_size=sum(f.get('size', 0) for f in files),
+                    parser_response=parser_response.data,
+                    parser_version=parser_response.version
+                )
+                db.add(project)
+                await db.flush()  # Get project ID without committing
+                
+                # Create project files
+                await self._create_project_files_from_parser(
+                    db, project, parser_response.data, files
+                )
+                
+                # Update session
+                session.project_id = project.id
+                session.status = SessionStatus.COMPLETED
+                session.processed_files = len(files)
             
-            db.add(project)
-            await db.commit()
-            await db.refresh(project)
+            # Set final status
+            async with db.begin():
+                project.upload_status = UploadStatus.COMPLETED
             
-            # Process parsed files and create ProjectFile records
-            await self._create_project_files_from_parser(
-                db, project, parser_response.data, files
-            )
-            
-            # Update session and project status
-            session.project_id = project.id
-            session.status = SessionStatus.COMPLETED
-            session.processed_files = len(files)
-            
-            project.upload_status = UploadStatus.COMPLETED
-            
-            await db.commit()
-            
+            logger.info("Project created via parser", project_id=project.id)
             return project
             
-        except httpx.RequestError as e:
-            raise Exception(f"Parser service unavailable: {str(e)}")
-        except httpx.HTTPStatusError as e:
-            raise Exception(f"Parser service error: {e.response.status_code}")
+        except Exception as e:
+            logger.error("Parser upload failed", error=str(e))
+            # Update session with failure information
+            async with db.begin():
+                session.status = SessionStatus.FAILED
+                session.errors = session.errors or []
+                session.errors.append(str(e))
+            
+            if isinstance(e, ParserServiceException):
+                raise
+                
+            raise ParserServiceException(
+                detail=f"Parser error: {str(e)}"
+            )
     
     async def _upload_direct(
         self,
@@ -327,74 +356,50 @@ class UploadService:
         project_data: ProjectCreate,
         files: List[Dict[str, Any]]
     ) -> Project:
-        """Upload project using direct file storage"""
-        # Create project
-        project_data_dict = {
-            "name": project_data.name,
-            "description": project_data.description,
-            "upload_method": UploadMethod.DIRECT,
-            "upload_status": UploadStatus.PROCESSING,
-            "original_filename": session.session_id,
-            "file_size": sum(f.get('size', 0) for f in files)
-        }
-        
-        project = await ProjectRepository.create(db, project_data_dict)
-        
-        # Process files
-        processed_count = 0
-        failed_count = 0
-        
-        for file_data in files:
-            try:
-                logger.info("Processing file for database storage", 
-                          filename=file_data['filename'],
-                          relative_path=file_data['relative_path'],
-                          size=file_data.get('size', 0))
+        """Upload project using direct file analysis"""
+        try:
+            # Create project record with transaction
+            async with db.begin():
+                # Create project
+                project = Project(
+                    name=project_data.name,
+                    description=project_data.description,
+                    upload_method=UploadMethod.DIRECT,
+                    upload_status=UploadStatus.PROCESSING,
+                    original_filename=files[0]['filename'] if len(files) == 1 else None,
+                    file_size=sum(f.get('size', 0) for f in files)
+                )
+                db.add(project)
+                await db.flush()  # Get project ID without committing
                 
-                await self._create_project_file_direct(db, project, file_data)
-                processed_count += 1
-                
-                logger.info("File successfully stored in database", 
-                          filename=file_data['filename'],
-                          project_id=project.id,
-                          processed_count=processed_count)
-                
-                # Update session progress
-                session.processed_files = processed_count
-                await UploadSessionRepository.update(db, session)
+                # Process each file
+                logger.info("Processing files for direct upload", file_count=len(files))
+                for file_data in files:
+                    await self._create_project_file_direct(db, project, file_data)
                     
-            except Exception as e:
-                failed_count += 1
+                # Update session
+                session.project_id = project.id
+                session.status = SessionStatus.COMPLETED
+                session.processed_files = len(files)
+            
+            # Set final status
+            async with db.begin():
+                project.upload_status = UploadStatus.COMPLETED
+            
+            logger.info("Project created via direct upload", project_id=project.id)
+            return project
+            
+        except Exception as e:
+            logger.error("Direct upload failed", error=str(e))
+            # Update session with failure information
+            async with db.begin():
+                session.status = SessionStatus.FAILED
                 session.errors = session.errors or []
-                session.errors.append(f"Failed to process {file_data['filename']}: {str(e)}")
-                logger.error("Failed to store file in database", 
-                           filename=file_data['filename'], 
-                           error=str(e),
-                           project_id=project.id)
-        
-        # Update final status
-        session.project_id = project.id
-        session.failed_files = failed_count
-        
-        if processed_count > 0:
-            project.upload_status = UploadStatus.COMPLETED
-            session.status = SessionStatus.COMPLETED
-        else:
-            project.upload_status = UploadStatus.FAILED
-            session.status = SessionStatus.FAILED
-            logger.error("Project upload failed - no files processed", 
-                       project_id=project.id,
-                       project_name=project.name,
-                       files_failed=failed_count,
-                       upload_method="direct")
-
-        await ProjectRepository.update(db, project)
-        await UploadSessionRepository.update(db, session)
-        
-        logger.info("Database commit completed", 
-                   project_id=project.id,
-                   session_id=session.session_id)
-        return project
+                session.errors.append(str(e))
+            raise ValidationException(
+                detail=f"Direct upload failed: {str(e)}",
+                field_errors={"files": str(e)}
+            )
     
     async def _create_project_files_from_parser(
         self,
@@ -503,7 +508,7 @@ class UploadService:
                 file_name=safe_filename
             )
             
-            # 3. Create AdditionalProjectFile record
+            # 3. Create AdditionalProjectFile record within a transaction
             file_data = {
                 "project_id": project_id,
                 "filename": safe_filename,
@@ -512,7 +517,8 @@ class UploadService:
                 "description": description
             }
 
-            additional_file = await AdditionalFileRepository.create(db, file_data)
+            async with db.begin():
+                additional_file = await AdditionalFileRepository.create(db, file_data)
             
             logger.info("Additional file added to project", 
                       additional_file_id=additional_file.id, 
@@ -527,6 +533,15 @@ class UploadService:
                        project_id=project_id, 
                        filename=safe_filename, 
                        error=str(e))
+            # If we encountered an error after saving the file but before creating the DB record,
+            # try to clean up the file
+            try:
+                self.file_storage.delete_file(safe_filename, sub_directory=sub_directory)
+            except Exception as cleanup_error:
+                logger.warning("Failed to clean up file after error", 
+                             filename=safe_filename, 
+                             error=str(cleanup_error))
+            
             if isinstance(e, (ProjectNotFoundException, FileNotFoundException, ParserServiceException, ValidationException)):
                 raise
             raise ValidationException(
@@ -564,17 +579,20 @@ class UploadService:
 
         update_data = data.model_dump(exclude_unset=True)
 
-        if "description" in update_data: # Allows setting description to "" or nullifying it if model field is nullable
-            additional_file.description = update_data["description"]
-
-        # Add updates for other fields if they become mutable
-        # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
-
-        if update_data: # Only commit if there was data to update
-            additional_file = await AdditionalFileRepository.update(db, additional_file)
+        if update_data:  # Only proceed with update if there's data to update
+            async with db.begin():
+                if "description" in update_data:  # Allows setting description to "" or nullifying it if model field is nullable
+                    additional_file.description = update_data["description"]
+                
+                # Add updates for other fields if they become mutable
+                # e.g., if data.filename: additional_file.filename = data.filename (and rename file on disk)
+                
+                additional_file = await AdditionalFileRepository.update(db, additional_file)
+            
             logger.info("Additional file updated", additional_file_id=additional_file.id, project_id=project_id, changes=update_data)
         else:
             logger.info("No changes detected for additional file update", additional_file_id=additional_file.id, project_id=project_id)
+        
         return additional_file
 
     async def delete_additional_file(
@@ -594,8 +612,10 @@ class UploadService:
         # Store project_uuid before deleting the record to avoid SQLAlchemy relationship access issues
         project_uuid = additional_file.project.uuid
 
-        # Attempt to delete DB record first
-        deleted = await AdditionalFileRepository.delete(db, additional_file_id, project_id)
+        # Delete the DB record within a transaction
+        async with db.begin():
+            deleted = await AdditionalFileRepository.delete(db, additional_file_id, project_id)
+        
         if deleted:
             logger.info("Additional file record deleted from DB", additional_file_id=additional_file_id, project_id=project_id)
         
