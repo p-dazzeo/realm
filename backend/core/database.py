@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import MetaData
-from app.config import settings
+from core.config import core_settings
 import structlog
 from typing import AsyncGenerator
 
@@ -9,8 +9,8 @@ logger = structlog.get_logger()
 
 # Database engine
 engine = create_async_engine(
-    settings.database_url,
-    echo=settings.log_level == "DEBUG",
+    core_settings.database_url,
+    echo=core_settings.log_level == "DEBUG",
     pool_pre_ping=True,
     pool_recycle=300,
 )

@@ -1,16 +1,14 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, ForeignKey, Boolean, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.database import Base
+from shared.models.base import BaseModel, UUIDMixin
 from typing import Optional, Dict, Any
 import uuid
 
 
-class Project(Base):
+class Project(BaseModel, UUIDMixin):
     __tablename__ = "projects"
     
-    id = Column(Integer, primary_key=True, index=True)
-    uuid = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False, index=True)
     description = Column(Text)
     
@@ -24,18 +22,14 @@ class Project(Base):
     parser_response = Column(JSON)  # Structured data from parser
     parser_version = Column(String)
     
-    # Metadata
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
     # Relationships
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
+    additional_files = relationship("AdditionalProjectFile", back_populates="project", cascade="all, delete-orphan")
 
 
-class ProjectFile(Base):
+class ProjectFile(BaseModel):
     __tablename__ = "project_files"
     
-    id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     
     # File metadata
@@ -57,18 +51,13 @@ class ProjectFile(Base):
     loc = Column(Integer)  # Lines of code
     is_binary = Column(Boolean, default=False)
     
-    # Metadata
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
     # Relationships
     project = relationship("Project", back_populates="files")
 
 
-class UploadSession(Base):
+class UploadSession(BaseModel):
     __tablename__ = "upload_sessions"
     
-    id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     
     # Session metadata
@@ -87,7 +76,19 @@ class UploadSession(Base):
     # Associated project
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     
-    # Metadata
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    expires_at = Column(DateTime(timezone=True))  # Session expiration 
+    expires_at = Column(DateTime(timezone=True))  # Session expiration
+
+
+class AdditionalProjectFile(BaseModel, UUIDMixin):
+    __tablename__ = "additional_project_files"
+
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+
+    # File metadata
+    filename = Column(String, nullable=False, index=True)
+    file_path = Column(String, nullable=False, index=True)  # Full path where the file is stored
+    file_size = Column(BigInteger)  # Size in bytes
+    description = Column(Text, nullable=True) # Optional description for the file's purpose
+
+    # Relationships
+    project = relationship("Project", back_populates="additional_files")

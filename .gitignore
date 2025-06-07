@@ -12,9 +12,7 @@ wheels/
 .llm
 
 # Data files
-backend/gendoc/storage/*
-backend/rag/storage/*
-backend/rag/data/*
+backend/storage/*
 
 # Vite/React specific
 dist/
